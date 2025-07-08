@@ -1,10 +1,66 @@
 <!DOCTYPE html>
-<title>Playlists</title>
-<h1>Your Playlists</h1>
-<ul>
-  {% for pl in playlists %}
-  <li>{{ pl.name }} {% if pl.is_external %}(external){% endif %}</li>
-  {% else %}
-  <li><em>No playlists yet</em></li>
-  {% endfor %}
-</ul>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Playlists</title>
+  </head>
+  <body>
+    <h1>Your Playlists</h1>
+
+    <!-- Create playlist form -->
+    <form action="{{ url_for('main.create_playlist') }}" method="post">
+      <input name="name" placeholder="New playlist name" required />
+      <button type="submit">Add Playlist</button>
+    </form>
+
+    <ul>
+      {% for pl in playlists %}
+      <li>
+        <strong>{{ pl.name }}</strong>
+        <!-- Delete playlist -->
+        <form
+          action="{{ url_for('main.delete_playlist', pid=pl.id) }}"
+          method="post"
+          style="display: inline"
+        >
+          <button type="submit">🗑️</button>
+        </form>
+
+        <!-- Show items -->
+        <ul>
+          {% for item in pl.items %}
+          <li>
+            {{ item.title }} {{ item.url or 'No URL' }} (ID: {{
+            item.provider_item_id }})
+            <!-- Delete item -->
+            <form
+              action="{{ url_for('main.delete_item',
+                                     pid=pl.id, iid=item.id) }}"
+              method="post"
+              style="display: inline"
+            >
+              <button type="submit">✖️</button>
+            </form>
+          </li>
+          {% else %}
+          <li><em>No items yet</em></li>
+          {% endfor %}
+        </ul>
+
+        <!-- Add single item form -->
+        <form
+          action="{{ url_for('main.create_item', pid=pl.id) }}"
+          method="post"
+        >
+          <input name="provider_item_id" placeholder="Video ID" required />
+          <input name="title" placeholder="Optional title" />
+          <input name="url" placeholder="Optional URL" />
+          <button type="submit">➕ Add Item</button>
+        </form>
+      </li>
+      {% else %}
+      <li><em>No playlists</em></li>
+      {% endfor %}
+    </ul>
+  </body>
+</html>
