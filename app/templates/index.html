@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<title>Playlists</title>
+<h1>Your Playlists</h1>
+<ul>
+  {% for pl in playlists %}
+  <li>{{ pl.name }} {% if pl.is_external %}(external){% endif %}</li>
+  {% else %}
+  <li><em>No playlists yet</em></li>
+  {% endfor %}
+</ul>
