@@ -67,8 +67,8 @@ def thumbnail(filename):
 
 
 
-@app.route("/archive/<path:url>", methods=["POST"])
-def archive(url):
+@app.route("/import/<path:url>", methods=["POST"])
+def importReq(url):
     Thread(
         target=downloader.extract_playlist,
         args=(url,),
@@ -116,8 +116,6 @@ def delete_audio(youtube_id):
 
 # Run ------------------------------------------------
 if __name__ == "__main__":
-    print("Updating Yt-DLP to ensure maximum compatibility.")
-    os.system('py -3 -m pip install -U "yt-dlp[default]"')
     settings_helper.sync_settings()
 
     database.init_db()
@@ -132,6 +130,9 @@ if __name__ == "__main__":
             print(f"Re-downloading {len(missingFiles)} Files")
             downloader.redownload_missing_files()
 
-    print("All files pass validation.")
+    debug_enabled = os.environ.get("AUDIOIO_DEBUG", "").lower() in {"1", "true", "yes", "on"}
 
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    print("All files pass validation.")
+    print("Audio.io is running at http://localhost:8000")
+
+    app.run(host="0.0.0.0", port=8000, debug=debug_enabled, use_reloader=False)

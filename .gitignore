@@ -1,7 +1,13 @@
 __pycache__/
+.venv
 *.pyc
 
-data
+data/audios/*
+data/thumbnails/*
+data/incomplete/*
+settings.json
+audioio.db
 
 .env
 *.md
+!README.md

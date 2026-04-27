@@ -28,13 +28,13 @@ async function fetchDownloadStatus() {
     return await response.json();
 }
 
-async function archiveTrack(url) {
-    const response = await fetch(`/archive/${encodeURIComponent(url)}`, {
+async function importTrack(url) {
+    const response = await fetch(`/import/${encodeURIComponent(url)}`, {
         method: "POST"
     });
 
     if (!response.ok) {
-        return Promise.reject(new Error(`Failed to archive track: ${response.status}`));
+        return Promise.reject(new Error(`Failed to import track: ${response.status}`));
     }
 
     return await response.json();

@@ -23,7 +23,7 @@ download_status_lock = Lock()
 download_batches = {}
 download_batches_lock = Lock()
 
-ARCHIVE_REQUEST_PREFIX = "archive-request-"
+IMPORT_REQUEST_PREFIX = "import-request-"
 
 ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
 
@@ -362,49 +362,6 @@ def update_download_status(
 def clear_download_status(download_id: str) -> None:
     with download_status_lock:
         download_status.pop(download_id, None)
-
-def create_archive_request(track_url: str) -> str:
-    request_id = f"{ARCHIVE_REQUEST_PREFIX}{uuid.uuid4().hex}"
-
-    update_download_status(
-        request_id,
-        title="Importing URL",
-        uploader="",
-        status="starting",
-        percent=0,
-        filename=track_url
-    )
-
-    return request_id
-
-def start_archive(track_url: str, request_id: str) -> None:
-    try:
-        result = extract_playlist(track_url)
-
-        if result.get("queued_count", 0) == 0:
-            update_download_status(
-                request_id,
-                title=result.get("title") or "Nothing new to import",
-                uploader=result.get("uploader") or "",
-                status="complete",
-                percent=100
-            )
-            return
-
-        clear_download_status(request_id)
-    except Exception as e:
-        clean_error = clean_download_error(e)
-
-        update_download_status(
-            request_id,
-            title="Import failed",
-            uploader="",
-            status="error",
-            percent=0,
-            error=clean_error
-        )
-
-        print(f"Archive failed: {track_url} - {clean_error}")
 
 def create_download_batch(batch_id, title, total_items):
     batch = DownloadBatchStatus(
