@@ -130,9 +130,7 @@ if __name__ == "__main__":
             print(f"Re-downloading {len(missingFiles)} Files")
             downloader.redownload_missing_files()
 
-    debug_enabled = os.environ.get("AUDIOIO_DEBUG", "").lower() in {"1", "true", "yes", "on"}
-
     print("All files pass validation.")
     print("Audio.io is running at http://localhost:8000")
 
-    app.run(host="0.0.0.0", port=8000, debug=debug_enabled, use_reloader=False)
+    app.run(host="0.0.0.0", port=8000, debug=False, use_reloader=False)
