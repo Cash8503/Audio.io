@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>{% block title %}Audio.io{% endblock %}</title>
+        <link
+            rel="icon"
+            type="image/png"
+            href="{{ url_for('static', filename='img/favicon.png') }}"
+        />
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/style.css') }}"
+        />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    </head>
+    <body>
+        <header id="header-id" class="page-content">
+            <div class="header-center">
+                <h1><span class="accent-text">Audio</span>.io</h1>
+                <p>
+                    Your <span class="accent-text">local</span> YouTube audio
+                    archive
+                </p>
+            </div>
+        </header>
+
+        {% include "partials/sidebar.html" %}
+
+        <main class="page-content">{% block content %}{% endblock %}</main>
+        <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+        <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+        <script src="{{ url_for('static', filename='js/ui.js') }}"></script>
+        {% block scripts %}{% endblock %}
+    </body>
+</html>

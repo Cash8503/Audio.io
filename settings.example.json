@@ -1,0 +1,59 @@
+{
+  "theme": {
+    "label": "Theme",
+    "description": "Choose a light, dark, or system-matched interface.",
+    "group": "Appearance",
+    "type": "select",
+    "value": "auto",
+    "choices": ["dark", "light", "auto"],
+    "option_tooltips": {
+      "dark": "Always use the dark interface.",
+      "light": "Always use the light interface.",
+      "auto": "Follow the operating system light or dark preference."
+    }
+  },
+  "accent_color": {
+    "label": "Accent Color",
+    "description": "Highlight color used for active controls, selected tracks, and branding.",
+    "group": "Appearance",
+    "type": "color",
+    "value": "#8c4eff"
+  },
+  "audio_quality": {
+    "label": "Audio Quality",
+    "description": "MP3 bitrate used for new downloads. Changing this will re-download existing tracks.",
+    "group": "Advanced",
+    "type": "select",
+    "value": "192",
+    "choices": ["128", "192", "256", "320"],
+    "option_tooltips": {
+      "128": "Smallest files, lower audio quality.",
+      "192": "Balanced file size and quality.",
+      "256": "Higher quality with larger files.",
+      "320": "Largest files, highest MP3 quality."
+    }
+  },
+  "max_workers": {
+    "label": "Concurrent Downloads",
+    "description": "How many playlist items can download at the same time.",
+    "group": "Advanced",
+    "type": "number",
+    "value": 6,
+    "min": 1,
+    "max": 12
+  },
+  "auto_cull_orphan_files": {
+    "label": "Clean Orphan Files",
+    "description": "Remove audio and thumbnail files that are no longer in the database when Audio.io starts.",
+    "group": "Advanced",
+    "type": "boolean",
+    "value": true
+  },
+  "auto_redownload_missing": {
+    "label": "Repair Missing Files",
+    "description": "Re-download database tracks whose audio or thumbnail files are missing when Audio.io starts.",
+    "group": "Advanced",
+    "type": "boolean",
+    "value": true
+  }
+}

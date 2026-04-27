@@ -1,0 +1,22 @@
+{% extends "base.html" %} {% block title %}Audio.io - Player{% endblock %} {%
+block content %}
+<section class="player">
+    <h2 id="now-playing-title">Nothing playing</h2>
+    <p id="now-playing-uploader">Choose a track</p>
+    <img id="now-playing-thumbnail" src="" alt="" />
+
+    {% include "partials/audioplayer.html" %}
+
+    <div class="player-buttons">
+        <button class="btn" id="shuffle-button">Shuffle</button>
+        <button class="btn" id="prev-button">Previous</button>
+        <button class="btn" id="next-button">Next</button>
+    </div>
+</section>
+{% set track_library_heading = "Tracks" %}
+{% set track_library_search_placeholder = "Search your library..." %}
+{% include "partials/track_library.html" %}
+{% endblock %} {% block scripts %}
+<script src="{{ url_for('static', filename='js/helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='js/player.js') }}"></script>
+{% endblock %}

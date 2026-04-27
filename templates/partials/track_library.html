@@ -1,0 +1,34 @@
+<section class="track-library-shell">
+    <div class="dividing-header">
+        <span>{{ track_library_heading }}</span>
+    </div>
+
+    <section class="controls track-library-controls" aria-label="Track library controls">
+        <input
+            id="track-search-input"
+            type="search"
+            placeholder="{{ track_library_search_placeholder or 'Search tracks...' }}"
+            aria-label="Search tracks"
+        />
+
+        <select id="track-sort-select" class="setting-input" aria-label="Sort tracks">
+            <option value="title-asc">Title A-Z</option>
+            <option value="title-desc">Title Z-A</option>
+            <option value="uploader-asc">Uploader A-Z</option>
+            <option value="uploader-desc">Uploader Z-A</option>
+            <option value="duration-asc">Shortest First</option>
+            <option value="duration-desc">Longest First</option>
+        </select>
+
+        <select id="track-filter-select" class="setting-input" aria-label="Filter tracks by duration">
+            <option value="all">All Durations</option>
+            <option value="short">Under 5 min</option>
+            <option value="medium">5-20 min</option>
+            <option value="long">Over 20 min</option>
+        </select>
+    </section>
+
+    <p id="track-results-summary" class="track-results-summary"></p>
+
+    <section class="library" id="track-list"></section>
+</section>

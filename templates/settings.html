@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Audio.io - Settings{% endblock %}
+
+{% block content %}
+<section class="settings">
+    <div class="dividing-header">
+        <span>Settings</span>
+    </div>
+
+    <p class="settings-subtitle">
+        Choose how Audio.io looks and tune download behavior.
+    </p>
+
+    <div id="settings-groups"></div>
+
+    <section class="settings-group">
+        <h3>Tools</h3>
+
+        <div class="settings-tool-panel">
+            <h4>yt-dlp</h4>
+            <p class="settings-disclaimer">
+                YouTube changes can break downloads. Update yt-dlp here when
+                formats, bot checks, or extraction start failing.
+            </p>
+
+            <div class="settings-action-row">
+                <button id="ytdlp-update" class="btn" type="button">Update yt-dlp</button>
+                <p id="ytdlp-version" class="settings-action-result" role="status"></p>
+                <p id="ytdlp-update-result" class="settings-action-result" role="status"></p>
+            </div>
+        </div>
+    </section>
+
+    <p id="settings-save-result" class="settings-action-result" role="status"></p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+{% endblock %}

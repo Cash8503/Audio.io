@@ -1,0 +1,28 @@
+<button class="sidebar-toggle" id="sidebar-toggle">Menu</button>
+
+<nav class="sidebar" id="sidebar">
+    <div class="sidebar-title"><span class="accent-text">Audio</span>.io</div>
+
+    <a
+        class="sidebar-link {% if active_page == 'player' %}active{% endif %}"
+        href="/"
+    >
+        Player
+    </a>
+
+    <a
+        class="sidebar-link {% if active_page == 'downloads' %}active{% endif %}"
+        href="/downloads"
+    >
+        Downloads
+    </a>
+
+    <a
+        class="sidebar-link {% if active_page == 'settings' %}active{% endif %}"
+        href="/settings"
+    >
+        Setup
+    </a>
+</nav>
+
+<script src="/static/js/sidebar.js"></script>
