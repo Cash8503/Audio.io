@@ -100,6 +100,14 @@ async function requestRestoreTrack(track) {
     return response;
 }
 
+async function requestRefreshTrackMetadata(youtubeId) {
+    const response = await fetch(`/api/audios/${encodeURIComponent(youtubeId)}/refresh-metadata`, {
+        method: "POST"
+    });
+
+    return response;
+}
+
 async function requestDismissDownload(downloadId) {
     const response = await fetch(`/api/downloads/${encodeURIComponent(downloadId)}`, {
         method: "DELETE"

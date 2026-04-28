@@ -14,6 +14,7 @@ AUDIO_COLUMNS = {
     "audio_quality": "TEXT",
     "requested_audio_quality": "TEXT",
     "audio_bitrate": "INTEGER",
+    "metadata_refreshed_at": "TEXT",
     "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
 }
 
@@ -83,9 +84,10 @@ def add_audio(item):
                 description,
                 audio_quality,
                 requested_audio_quality,
-                audio_bitrate
+                audio_bitrate,
+                metadata_refreshed_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             item.get("youtube_id"),
             item.get("title"),
@@ -96,8 +98,44 @@ def add_audio(item):
             item.get("description"),
             item.get("audio_quality"),
             item.get("requested_audio_quality"),
-            item.get("audio_bitrate")
+            item.get("audio_bitrate"),
+            item.get("metadata_refreshed_at")
         ))
+
+def update_audio_metadata(youtube_id, updates):
+    allowed_columns = {
+        "title",
+        "uploader",
+        "duration",
+        "thumbnail_path",
+        "description",
+        "metadata_refreshed_at",
+    }
+
+    filtered_updates = {
+        key: value
+        for key, value in updates.items()
+        if key in allowed_columns
+    }
+
+    if not filtered_updates:
+        return get_audio_record(youtube_id)
+
+    assignments = ", ".join(f"{key} = ?" for key in filtered_updates)
+    values = list(filtered_updates.values())
+    values.append(youtube_id)
+
+    with get_connection() as conn:
+        cursor = conn.execute(f"""
+            UPDATE audios
+            SET {assignments}
+            WHERE youtube_id = ?
+        """, values)
+
+        if cursor.rowcount == 0:
+            return None
+
+    return get_audio_record(youtube_id)
 
 def audio_exists(youtube_id):
     with get_connection() as conn:

@@ -1,4 +1,6 @@
 from pathlib import Path
+from ffmpeg_manager import ensure_ffmpeg_tools, resolve_ffmpeg_tools
+
 MAX_WORKERS = 6
 
 BASE_DIR = Path(__file__).parent
@@ -14,13 +16,13 @@ STATIC_DIR = BASE_DIR / "static"
 HTML_DIR = STATIC_DIR / "html"
 CSS_DIR = STATIC_DIR / "css"
 JS_DIR = STATIC_DIR / "js"
+FFMPEG_DOWNLOAD_DIR = DATA_DIR / "ffmpeg"
 AUDIO_EXTENSIONS = {".mp3"}
 THUMB_EXTENSIONS = {".jpg"}
 
 YTDL_ARGS = {
     'format': 'bestaudio*/best',
     'outtmpl': str(INCOMPLETE_DIR / "%(id)s.%(ext)s"),
-    'ffmpeg_location': str(BASE_DIR / 'ffmpeg'),
     'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
     'writethumbnail': True,
     'quiet': True,
@@ -36,8 +38,32 @@ FLAT_ARGS = {
 }
 
 
-FFMPEG = str(BASE_DIR / "ffmpeg" / "ffmpeg.exe")
-FFPROBE = str(BASE_DIR / "ffmpeg" / "ffprobe.exe")
+FFMPEG = "ffmpeg"
+FFPROBE = "ffprobe"
+
+
+def _apply_ffmpeg_tools(tools):
+    global FFMPEG, FFPROBE
+
+    FFMPEG = str(tools.ffmpeg)
+    FFPROBE = str(tools.ffprobe)
+    YTDL_ARGS["ffmpeg_location"] = str(tools.location)
+
+
+def configure_ffmpeg(auto_download=False):
+    tools = (
+        ensure_ffmpeg_tools(BASE_DIR, FFMPEG_DOWNLOAD_DIR)
+        if auto_download
+        else resolve_ffmpeg_tools(BASE_DIR, FFMPEG_DOWNLOAD_DIR)
+    )
+
+    if tools:
+        _apply_ffmpeg_tools(tools)
+
+    return tools
+
+
+configure_ffmpeg(auto_download=False)
 
 
 def get_config_dirs():

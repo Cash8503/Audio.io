@@ -14,7 +14,6 @@ from threading import Thread
 LOG_PATH = DATA_DIR / "audioio.log"
 _fatal_log_file = None
 
-
 def configure_logging():
     global _fatal_log_file
 
@@ -114,6 +113,24 @@ def start_background_task(name, target, *args):
     thread.start()
     return thread
 
+def enrich_audio_record(track):
+    if not isinstance(track, dict):
+        return track
+
+    track_id = track.get("youtube_id")
+
+    if not track_id:
+        return track
+
+    audio_file = downloader.find_existing_audio_file(track_id)
+    thumbnail_file = downloader.find_existing_thumbnail_file(track_id)
+
+    return {
+        **track,
+        "audio_file_exists": audio_file is not None,
+        "thumbnail_file_exists": thumbnail_file is not None,
+    }
+
 # Flask Endpoints ------------------------------------
 
 @app.route("/")
@@ -189,7 +206,7 @@ def upload_cookies():
 @app.route("/api/audios")
 def api_audios():
     audios = database.get_all_audio()
-    return jsonify(audios)
+    return jsonify([enrich_audio_record(track) for track in audios])
 @app.route("/audio/<filename>")
 def audio(filename):
     return send_from_directory(AUDIO_DIR, filename)
@@ -277,7 +294,29 @@ def restore_audio(youtube_id):
     database.add_audio(track)
 
     restored = database.get_audio_record(youtube_id)
-    return jsonify({"ok": True, "restored": restored}), 200
+    return jsonify({"ok": True, "restored": enrich_audio_record(restored)}), 200
+
+@app.route("/api/audios/<youtube_id>/refresh-metadata", methods=["POST"])
+def refresh_audio_metadata(youtube_id):
+    if not youtube_id:
+        return jsonify({"ok": False, "error": "Missing YouTube ID"}), 400
+
+    try:
+        refreshed = downloader.refresh_track_metadata(youtube_id)
+    except Exception as error:
+        app.logger.exception("Failed to refresh metadata for %s", youtube_id)
+        return jsonify({
+            "ok": False,
+            "error": downloader.clean_download_error(error),
+        }), 502
+
+    if not refreshed:
+        return jsonify({"ok": False, "error": "Track not found"}), 404
+
+    return jsonify({
+        "ok": True,
+        "track": enrich_audio_record(refreshed),
+    }), 200
 
 def run_app() -> None:
 
@@ -285,6 +324,12 @@ def run_app() -> None:
 
     database.init_db()
     downloader.check_dirs()
+    ffmpeg_tools = configure_ffmpeg(auto_download=True)
+    app.logger.info(
+        "Using FFmpeg from %s: %s",
+        ffmpeg_tools.source if ffmpeg_tools else "unknown",
+        ffmpeg_tools.location if ffmpeg_tools else "PATH",
+    )
     downloader.ensure_cookie_file()
     downloader.check_dirs() #clears any downloads made for cookie registration
 

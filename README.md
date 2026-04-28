@@ -5,7 +5,7 @@ Audio.io is a local Flask web app for downloading, organizing, and playing audio
 ## Features
 
 - Import individual tracks or playlists from YouTube-compatible URLs
-- Convert downloads to MP3 with bundled FFmpeg tools
+- Convert downloads to MP3 with bundled, system, or automatically downloaded FFmpeg tools
 - Browse and play your downloaded audio library in the browser
 - Save thumbnails and track metadata locally
 - Monitor active, queued, completed, and failed downloads
@@ -24,14 +24,14 @@ Audio.io is a local Flask web app for downloading, organizing, and playing audio
 +-- settings.example.json    # Default settings schema and values
 +-- templates/               # Flask/Jinja pages and partials
 +-- static/                  # CSS, JavaScript, and image assets
-+-- ffmpeg/                  # Bundled FFmpeg executables
++-- ffmpeg/                  # Optional bundled FFmpeg executables
 +-- data/                    # Runtime database, settings, audio, and thumbnails
 ```
 
 ## Requirements
 
 - Python 3.10 or newer
-- Windows is currently the expected platform because the app is configured to use bundled `.exe` FFmpeg binaries
+- Windows or Linux. FFmpeg is resolved from bundled binaries, system `PATH`, or downloaded release binaries on first startup.
 - Internet access for `yt-dlp` downloads and updates
 
 Python packages are listed in `requirements.txt`:
@@ -68,7 +68,7 @@ py -3 main.py
 http://localhost:8000
 ```
 
-On startup, Audio.io initializes the database, creates missing runtime folders, syncs settings from `settings.example.json`, and updates `yt-dlp` for compatibility.
+On startup, Audio.io initializes the database, creates missing runtime folders, syncs settings from `settings.example.json`, makes sure FFmpeg/ffprobe are available, and prepares YouTube cookie support when possible.
 
 ## Usage
 
@@ -91,13 +91,14 @@ Useful API routes:
 | Route | Method | Purpose |
 | --- | --- | --- |
 | `/api/audios` | `GET` | List downloaded audio records |
-| `/import/<url>` | `POST` | Start importing a track or playlist |
+| `/api/import` | `POST` | Start importing a track or playlist from a JSON `{ "url": "..." }` body |
 | `/api/downloads` | `GET` | Get current download statuses |
 | `/api/downloads/<download_id>` | `DELETE` | Dismiss a download status |
 | `/api/download-stats` | `GET` | Get batch download summaries |
 | `/api/settings` | `GET` | Load synced settings |
 | `/api/settings` | `PATCH` | Update settings |
 | `/api/audios/<youtube_id>` | `DELETE` | Delete a library record |
+| `/api/audios/<youtube_id>/refresh-metadata` | `POST` | Refresh saved track metadata and thumbnail from YouTube |
 
 ## Git Notes
 

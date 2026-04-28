@@ -22,7 +22,12 @@ function capitalize(text) {
 
 function thumbnailUrl(trackOrId) {
     const id = typeof trackOrId === "string" ? trackOrId : trackOrId.youtube_id;
-    return `/thumbnail/${id}.jpg`;
+    const cacheKey = typeof trackOrId === "object" && trackOrId !== null
+        ? trackOrId.metadata_refreshed_at
+        : "";
+    const cacheSuffix = cacheKey ? `?v=${encodeURIComponent(cacheKey)}` : "";
+
+    return `/thumbnail/${id}.jpg${cacheSuffix}`;
 }
 
 function audioUrl(trackOrId) {

@@ -15,11 +15,21 @@
     const previousTrackBtn = document.getElementById("prev-button");
     const nextTrackBtn = document.getElementById("next-button");
     const trackList = document.getElementById("track-list");
+    const refreshMetadataButton = document.getElementById("refresh-metadata-button");
+    const metadataStatus = document.getElementById("metadata-status");
+    const metadataDuration = document.getElementById("metadata-duration");
+    const metadataCreated = document.getElementById("metadata-created");
+    const metadataRefreshed = document.getElementById("metadata-refreshed");
+    const metadataQuality = document.getElementById("metadata-quality");
+    const metadataBitrate = document.getElementById("metadata-bitrate");
+    const metadataFiles = document.getElementById("metadata-files");
+    const metadataDescription = document.getElementById("metadata-description");
     const { resultsSummary } = bindTrackLibraryControls(libraryState, renderTracks);
 
     shuffleBtn.addEventListener("click", toggleShuffle);
     previousTrackBtn.addEventListener("click", playPreviousTrack);
     nextTrackBtn.addEventListener("click", playNextTrack);
+    refreshMetadataButton.addEventListener("click", refreshCurrentTrackMetadata);
 
     audioPlayer.addEventListener("play", () => {
         if ("mediaSession" in navigator) {
@@ -66,6 +76,80 @@
         }
 
         return shuffled;
+    }
+
+    function getCurrentTrack() {
+        if (!currentlyPlayingId) {
+            return null;
+        }
+
+        return tracks.find(track => track.youtube_id === currentlyPlayingId) || null;
+    }
+
+    function formatDateTime(value) {
+        if (!value) {
+            return "Not recorded";
+        }
+
+        const normalizedValue = String(value).includes("T")
+            ? String(value)
+            : String(value).replace(" ", "T");
+        const date = new Date(normalizedValue);
+
+        if (Number.isNaN(date.getTime())) {
+            return String(value);
+        }
+
+        return date.toLocaleString();
+    }
+
+    function getQualityText(track) {
+        const requestedQuality = track.requested_audio_quality
+            ? `${track.requested_audio_quality} kbps requested`
+            : "Request unknown";
+        const actualQuality = track.audio_quality
+            ? `${track.audio_quality} kbps actual`
+            : "Actual unknown";
+
+        return `${requestedQuality} / ${actualQuality}`;
+    }
+
+    function getFileStatusText(track) {
+        const audioStatus = track.audio_file_exists ? "audio ok" : "audio missing";
+        const thumbnailStatus = track.thumbnail_file_exists ? "thumbnail ok" : "thumbnail missing";
+
+        return `${audioStatus}, ${thumbnailStatus}`;
+    }
+
+    function setMetadataStatus(message, status) {
+        setStatus(metadataStatus, message, status);
+    }
+
+    function renderTrackMetadata(track) {
+        if (!track) {
+            refreshMetadataButton.disabled = true;
+            setMetadataStatus("Choose a track to view details.");
+            metadataDuration.textContent = "-";
+            metadataCreated.textContent = "-";
+            metadataRefreshed.textContent = "-";
+            metadataQuality.textContent = "-";
+            metadataBitrate.textContent = "-";
+            metadataFiles.textContent = "-";
+            metadataDescription.textContent = "";
+            return;
+        }
+
+        refreshMetadataButton.disabled = false;
+        setMetadataStatus(`Showing details for ${track.title || "selected track"}.`);
+        metadataDuration.textContent = durationToReadable(track.duration) || "Unknown";
+        metadataCreated.textContent = formatDateTime(track.created_at);
+        metadataRefreshed.textContent = formatDateTime(track.metadata_refreshed_at);
+        metadataQuality.textContent = getQualityText(track);
+        metadataBitrate.textContent = track.audio_bitrate
+            ? `${track.audio_bitrate} kbps`
+            : "Unknown";
+        metadataFiles.textContent = getFileStatusText(track);
+        metadataDescription.textContent = track.description || "No description saved.";
     }
 
     function rebuildQueue() {
@@ -135,11 +219,13 @@
 
         if (tracks.length === 0) {
             trackList.innerHTML = "<p>No tracks archived yet.</p>";
+            renderTrackMetadata(null);
             return;
         }
 
         if (queue.length === 0) {
             trackList.innerHTML = "<p>No tracks match your search or filters.</p>";
+            renderTrackMetadata(getCurrentTrack());
             return;
         }
 
@@ -154,6 +240,7 @@
         }
 
         updateActiveCard();
+        renderTrackMetadata(getCurrentTrack());
     }
 
     function playTrack(track) {
@@ -170,6 +257,7 @@
         nowPlayingThumbnail.style.display = "block";
         nowPlayingTitle.textContent = track.title || "Unknown title";
         nowPlayingUploader.textContent = track.uploader || "Unknown uploader";
+        renderTrackMetadata(track);
         updateMediaSession(track);
         updateActiveCard();
         audioPlayer.play();
@@ -254,6 +342,48 @@
         navigator.mediaSession.setActionHandler("previoustrack", () => {
             playPreviousTrack();
         });
+    }
+
+    async function refreshCurrentTrackMetadata() {
+        const track = getCurrentTrack();
+
+        if (!track) {
+            return;
+        }
+
+        refreshMetadataButton.disabled = true;
+        setMetadataStatus("Refreshing metadata...");
+
+        try {
+            const response = await requestRefreshTrackMetadata(track.youtube_id);
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(result.error || `Failed to refresh metadata: ${response.status}`);
+            }
+
+            const refreshedTrack = result.track;
+            const trackIndex = tracks.findIndex(item => item.youtube_id === refreshedTrack.youtube_id);
+
+            if (trackIndex !== -1) {
+                tracks[trackIndex] = refreshedTrack;
+            }
+
+            if (currentlyPlayingId === refreshedTrack.youtube_id) {
+                nowPlayingTitle.textContent = refreshedTrack.title || "Unknown title";
+                nowPlayingUploader.textContent = refreshedTrack.uploader || "Unknown uploader";
+                nowPlayingThumbnail.src = thumbnailUrl(refreshedTrack);
+                updateMediaSession(refreshedTrack);
+            }
+
+            renderTracks();
+            setMetadataStatus("Metadata refreshed.", "success");
+        } catch (error) {
+            console.error("Failed to refresh metadata:", error);
+            setMetadataStatus(error.message || "Failed to refresh metadata.", "error");
+        } finally {
+            refreshMetadataButton.disabled = getCurrentTrack() === null;
+        }
     }
 
     loadTracks();

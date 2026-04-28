@@ -12,6 +12,48 @@ block content %}
         <button class="btn" id="prev-button">Previous</button>
         <button class="btn" id="next-button">Next</button>
     </div>
+
+    <section class="track-metadata-panel" id="track-metadata-panel">
+        <div class="track-metadata-header">
+            <h3>Track Details</h3>
+            <button class="btn" id="refresh-metadata-button" type="button" disabled>
+                Refresh Metadata
+            </button>
+        </div>
+
+        <p id="metadata-status" class="metadata-status" role="status">
+            Choose a track to view details.
+        </p>
+
+        <dl class="metadata-grid">
+            <div>
+                <dt>Duration</dt>
+                <dd id="metadata-duration">-</dd>
+            </div>
+            <div>
+                <dt>Imported</dt>
+                <dd id="metadata-created">-</dd>
+            </div>
+            <div>
+                <dt>Refreshed</dt>
+                <dd id="metadata-refreshed">-</dd>
+            </div>
+            <div>
+                <dt>Quality</dt>
+                <dd id="metadata-quality">-</dd>
+            </div>
+            <div>
+                <dt>Bitrate</dt>
+                <dd id="metadata-bitrate">-</dd>
+            </div>
+            <div>
+                <dt>Files</dt>
+                <dd id="metadata-files">-</dd>
+            </div>
+        </dl>
+
+        <p id="metadata-description" class="metadata-description"></p>
+    </section>
 </section>
 {% set track_library_heading = "Tracks" %}
 {% set track_library_search_placeholder = "Search your library..." %}

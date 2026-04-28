@@ -6,6 +6,7 @@ data/audios/*
 data/thumbnails/*
 data/incomplete/*
 data/auth/*
+data/ffmpeg/*
 settings.json
 audioio.db
 

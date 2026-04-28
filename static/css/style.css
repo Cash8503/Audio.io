@@ -152,6 +152,74 @@ main {
     box-shadow: #111 5px 10px 10px;
 }
 
+.track-metadata-panel {
+    width: min(900px, 100%);
+    display: grid;
+    gap: var(--control-gap);
+    padding: var(--card-padding);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.track-metadata-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--control-gap);
+}
+
+.track-metadata-header h3 {
+    margin: 0;
+}
+
+.metadata-status,
+.metadata-description {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.45;
+}
+
+.metadata-status.error {
+    color: #ff7777;
+}
+
+.metadata-status.success {
+    color: var(--accent);
+}
+
+.metadata-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--control-gap);
+    margin: 0;
+}
+
+.metadata-grid div {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+}
+
+.metadata-grid dt {
+    margin: 0 0 6px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.metadata-grid dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.metadata-description {
+    max-height: 180px;
+    overflow: auto;
+    white-space: pre-line;
+}
+
 
 .library {
     display: grid;

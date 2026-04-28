@@ -11,10 +11,13 @@ from typing import Literal, Optional
 from dataclasses import dataclass, asdict, field
 import json
 import uuid
+import config
 from config import *
 import sharedhelpers
 import settings as settings_helper
 import re
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 download_status = {}
 download_status_lock = Lock()
@@ -99,6 +102,7 @@ class TrackRecord:
     audio_quality: str = ""
     requested_audio_quality: str = ""
     audio_bitrate: int | None = None
+    metadata_refreshed_at: str = ""
 
     @classmethod
     def from_info_dict(cls, info, requested_audio_quality=None):
@@ -134,6 +138,7 @@ class TrackRecord:
             audio_quality=str(row.get("audio_quality") or ""),
             requested_audio_quality=str(row.get("requested_audio_quality") or ""),
             audio_bitrate=row.get("audio_bitrate"),
+            metadata_refreshed_at=str(row.get("metadata_refreshed_at") or ""),
         )
 
     def set_files(
@@ -398,7 +403,7 @@ def choose_closest_audio_format(track_info, target_quality: int):
 def get_audio_bitrate(file_path) -> int | None:
     try:
         r = subprocess.run(
-            [FFPROBE, '-v', 'quiet', '-print_format', 'json', '-show_format', str(file_path)],
+            [config.FFPROBE, '-v', 'quiet', '-print_format', 'json', '-show_format', str(file_path)],
             capture_output=True, text=True, timeout=15
         )
         bit_rate = json.loads(r.stdout).get("format", {}).get("bit_rate")
@@ -414,7 +419,7 @@ def get_audio_bitrate(file_path) -> int | None:
 def get_ytdl_args(preferred_quality=None, format_id=None):# -> dict[str, Any]:
     quality = preferred_quality or get_target_audio_quality()
     args = {
-        **YTDL_ARGS,
+        **config.YTDL_ARGS,
         "js_runtimes": {"node": {}},
         "postprocessors": [
             {
@@ -446,6 +451,19 @@ def get_flat_ytdl_args() -> dict[str, bool | str]:
 
     return args
 
+def get_metadata_ytdl_args() -> dict:
+    args = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "js_runtimes": {"node": {}},
+    }
+
+    if ensure_cookie_file():
+        args["cookiefile"] = str(COOKIE_PATH)
+
+    return args
+
 def check_dirs():
     for directory in get_config_dirs():
         directory.mkdir(parents=True, exist_ok=True)
@@ -462,7 +480,7 @@ def check_dirs():
 def get_duration(file_path) -> float | Literal[0]:
     try:
         r = subprocess.run(
-            [FFPROBE, '-v', 'quiet', '-print_format', 'json', '-show_format', str(file_path)],
+            [config.FFPROBE, '-v', 'quiet', '-print_format', 'json', '-show_format', str(file_path)],
             capture_output=True, text=True, timeout=15
         )
         return float(json.loads(r.stdout)['format'].get('duration', 0))
@@ -480,7 +498,7 @@ def find_thumbnail_file(track_id) -> Path | None:
 def save_thumbnail(track_id, src_path) -> str:
     dest = THUMBS_DIR / f"{track_id}.jpg"
     try:
-        subprocess.run([FFMPEG, '-y', '-i', str(src_path), str(dest)],
+        subprocess.run([config.FFMPEG, '-y', '-i', str(src_path), str(dest)],
         capture_output=True, timeout=15)
         Path(src_path).unlink(missing_ok=True)
         if dest.exists():
@@ -488,6 +506,33 @@ def save_thumbnail(track_id, src_path) -> str:
     except Exception:
         logger.debug("Could not save thumbnail for %s", track_id, exc_info=True)
     return ''
+
+def refresh_thumbnail_from_url(track_id, thumbnail_url) -> str:
+    if not thumbnail_url:
+        return ''
+
+    parsed_url = urlparse(str(thumbnail_url))
+    suffix = Path(parsed_url.path).suffix.lower()
+
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        suffix = ".jpg"
+
+    temp_path = INCOMPLETE_DIR / f"{track_id}.metadata-refresh{suffix}"
+
+    try:
+        request = Request(
+            str(thumbnail_url),
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+
+        with urlopen(request, timeout=20) as response:
+            temp_path.write_bytes(response.read())
+
+        return save_thumbnail(track_id, temp_path)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        logger.debug("Could not refresh thumbnail for %s", track_id, exc_info=True)
+        return ''
 
 def find_existing_audio_file(track_id) -> Path | None:
     for ext in AUDIO_EXTENSIONS:
@@ -1127,6 +1172,44 @@ def extract_playlist(track_url):
         title=playlist_info.get("title") or "Imported Playlist",
         uploader="",
     )
+
+def refresh_track_metadata(youtube_id):
+    existing = database.get_audio_record(youtube_id)
+
+    if not existing:
+        return None
+
+    track_url = youtube_watch_url(youtube_id)
+
+    with yt_dlp.YoutubeDL(get_metadata_ytdl_args()) as ydl: # pyright: ignore[reportArgumentType]
+        track_info = ydl.extract_info(track_url, download=False)
+
+    thumbnails = track_info.get("thumbnails") or []
+    thumbnail_url = track_info.get("thumbnail")
+
+    if not thumbnail_url and thumbnails:
+        thumbnail_url = thumbnails[-1].get("url")
+
+    thumbnail_path = refresh_thumbnail_from_url(youtube_id, thumbnail_url)
+
+    updates = {
+        "title": track_info.get("title") or existing.get("title") or "Unknown",
+        "uploader": (
+            track_info.get("uploader")
+            or track_info.get("channel")
+            or track_info.get("creator")
+            or existing.get("uploader")
+            or "Unknown"
+        ),
+        "duration": track_info.get("duration") or existing.get("duration") or 0,
+        "description": track_info.get("description") or existing.get("description") or "",
+        "metadata_refreshed_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+    if thumbnail_path:
+        updates["thumbnail_path"] = thumbnail_path
+
+    return database.update_audio_metadata(youtube_id, updates)
 
 def redownload_all_for_quality() -> None:
     target_quality = settings_helper.get_setting_value("audio_quality", "192")
