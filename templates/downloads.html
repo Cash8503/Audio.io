@@ -1,19 +1,24 @@
-<!doctype html>
-{% extends "base.html" %} {% block title %}Audio.io - Downloads{% endblock %} {%
-block content %}
+{% extends "base.html" %}
+
+{% block title %}Audio.io - Downloads{% endblock %}
+
+{% block content %}
 <section class="controls">
-    <input id="archive-input" type="text" placeholder="Grow your archive..." />
-    <button id="archive-button" class="btn">Import URL</button>
+    <input id="import-input" type="text" placeholder="Grow your archive..." />
+    <button id="import-button" class="btn">Import URL</button>
 </section>
 
 <section class="downloads">
     <h2 id="download-header">No Recent Downloads</h2>
     <div id="download-list"></div>
 </section>
+
 {% set track_library_heading = "Existing Tracks" %}
-{% set track_library_search_placeholder = "Search archived tracks..." %}
+{% set track_library_search_placeholder = "Search imported tracks..." %}
 {% include "partials/track_library.html" %}
-{% endblock %} {% block scripts %}
+{% endblock %}
+
+{% block scripts %}
 <script src="{{ url_for('static', filename='js/helpers.js') }}"></script>
 <script src="{{ url_for('static', filename='js/downloads.js') }}"></script>
 {% endblock %}

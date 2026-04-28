@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 from config import *
 
 AUDIO_COLUMNS = {
@@ -11,14 +12,25 @@ AUDIO_COLUMNS = {
     "thumbnail_path": "TEXT",
     "description": "TEXT",
     "audio_quality": "TEXT",
+    "requested_audio_quality": "TEXT",
+    "audio_bitrate": "INTEGER",
     "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
 }
 
+@contextmanager
 def get_connection():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def create_table_sql(table_name, columns):
@@ -69,9 +81,11 @@ def add_audio(item):
                 audio_path,
                 thumbnail_path,
                 description,
-                audio_quality
+                audio_quality,
+                requested_audio_quality,
+                audio_bitrate
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             item.get("youtube_id"),
             item.get("title"),
@@ -80,10 +94,12 @@ def add_audio(item):
             item.get("audio_path"),
             item.get("thumbnail_path"),
             item.get("description"),
-            item.get("audio_quality")
+            item.get("audio_quality"),
+            item.get("requested_audio_quality"),
+            item.get("audio_bitrate")
         ))
 
-def get_audio(youtube_id):
+def audio_exists(youtube_id):
     with get_connection() as conn:
         result = conn.execute("""
             SELECT 1
@@ -93,6 +109,17 @@ def get_audio(youtube_id):
         """, (youtube_id,)).fetchone()
 
         return result is not None
+
+def get_audio_record(youtube_id):
+    with get_connection() as conn:
+        row = conn.execute("""
+            SELECT *
+            FROM audios
+            WHERE youtube_id = ?
+            LIMIT 1
+        """, (youtube_id,)).fetchone()
+
+        return dict(row) if row else None
 
 def get_all_audio():
     with get_connection() as conn:

@@ -1,5 +1,4 @@
 (() => {
-    const ARCHIVE_REQUEST_PREFIX = "archive-request-";
     let settings = null;
     let tracks = [];
     const libraryState = createTrackLibraryState();
@@ -7,12 +6,12 @@
     const completedDownloadIds = new Set();
     let downloadStatusTimer = null;
 
-    const archiveBtn = document.getElementById("archive-button");
-    const archiveInput = document.getElementById("archive-input");
+    const importBtn = document.getElementById("import-button");
+    const importInput = document.getElementById("import-input");
     const trackList = document.getElementById("track-list");
     const { resultsSummary } = bindTrackLibraryControls(libraryState, renderTracks);
 
-    archiveBtn.addEventListener("click", archiveURL);
+    importBtn.addEventListener("click", importURL);
 
     function getDisplayPercent(item) {
         const id = item.id;
@@ -45,21 +44,61 @@
         return item.percent || 0;
     }
 
-    function isArchiveRequest(itemOrId) {
-        const id = typeof itemOrId === "string" ? itemOrId : itemOrId?.id;
-        return typeof id === "string" && id.startsWith(ARCHIVE_REQUEST_PREFIX);
-    }
-
     function delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    async function dismissArchiveRequest(requestId) {
-        const response = await requestDismissDownload(requestId);
+    function showUndoToast(track) {
+        const toast = document.createElement("div");
+        toast.className = "undo-toast";
 
-        if (!response.ok && response.status !== 404) {
-            console.error("Failed to dismiss archive request:", response.status);
-        }
+        const message = document.createElement("p");
+        message.className = "undo-toast-message";
+        message.textContent = `Deleted ${track.title || "track"}.`;
+
+        const undoButton = document.createElement("button");
+        undoButton.className = "btn undo-toast-button";
+        undoButton.type = "button";
+        undoButton.textContent = "Undo";
+
+        const closeButton = document.createElement("button");
+        closeButton.className = "undo-toast-close";
+        closeButton.type = "button";
+        closeButton.textContent = "x";
+        closeButton.setAttribute("aria-label", "Dismiss undo message");
+
+        toast.append(message, undoButton, closeButton);
+        uiAddToast(toast, { maxToasts: 3 });
+
+        const timeoutId = setTimeout(() => uiRemoveToast(toast), 8000);
+
+        closeButton.addEventListener("click", () => {
+            clearTimeout(timeoutId);
+            uiRemoveToast(toast);
+        });
+
+        undoButton.addEventListener("click", async () => {
+            clearTimeout(timeoutId);
+            undoButton.disabled = true;
+            undoButton.textContent = "Restoring...";
+
+            try {
+                const response = await requestRestoreTrack(track);
+
+                if (!response.ok) {
+                    const result = await response.json().catch(() => ({}));
+                    throw new Error(result.error || `Failed to restore track: ${response.status}`);
+                }
+
+                await loadTracks();
+                uiRemoveToast(toast);
+            } catch (error) {
+                console.error("Failed to restore track:", error);
+                message.textContent = error.message || "Failed to restore track.";
+                undoButton.disabled = false;
+                undoButton.textContent = "Retry";
+            }
+        });
     }
 
     function startDownloadStatusPolling() {
@@ -88,10 +127,9 @@
     }
 
     function renderDownloads(downloads) {
-        const visibleDownloads = downloads.filter(item => !isArchiveRequest(item));
         let shouldReloadTracks = false;
 
-        for (const item of visibleDownloads) {
+        for (const item of downloads) {
             if (item.status === "complete" && !completedDownloadIds.has(item.id)) {
                 completedDownloadIds.add(item.id);
                 shouldReloadTracks = true;
@@ -102,40 +140,28 @@
             loadTracks();
         }
 
-        uiRenderDownloads(visibleDownloads, {
+        uiRenderDownloads(downloads, {
             getDisplayPercent,
             onDismiss: dismissDownload
         });
     }
 
-    async function waitForArchiveStatus(requestId, existingDownloadIds) {
-        const timeoutMs = 15000;
+    async function waitForNewDownloadStatus(existingDownloadIds) {
+        const timeoutMs = 30000;
         const startedAt = Date.now();
 
         while (Date.now() - startedAt < timeoutMs) {
             const downloads = await fetchDownloadStatus();
-            const requestStatus = downloads.find(item => item.id === requestId);
-            const hasNewDownload = downloads.some(item =>
-                !isArchiveRequest(item) && !existingDownloadIds.has(item.id)
-            );
-
             renderDownloads(downloads);
 
-            if (requestStatus?.status === "error") {
-                await dismissArchiveRequest(requestId);
-                throw new Error(requestStatus.error || "Archive failed.");
-            }
+            const hasNewDownload = downloads.some(item => !existingDownloadIds.has(item.id));
 
-            if (hasNewDownload || requestStatus?.status === "complete") {
-                await dismissArchiveRequest(requestId);
+            if (hasNewDownload) {
                 return;
             }
 
-            await delay(400);
+            await delay(500);
         }
-
-        await dismissArchiveRequest(requestId);
-        throw new Error("Import started, but no download status appeared yet.");
     }
 
     function renderTracks() {
@@ -144,7 +170,7 @@
         updateTrackResultsSummary(resultsSummary, visibleTracks.length, tracks.length);
 
         if (tracks.length === 0) {
-            trackList.innerHTML = "<p>No tracks archived yet.</p>";
+            trackList.innerHTML = "<p>No tracks imported yet.</p>";
             return;
         }
 
@@ -166,58 +192,56 @@
         }
     }
 
-    async function archiveURL() {
-        const url = archiveInput.value.trim();
+    async function importURL() {
+        const url = importInput.value.trim();
 
         if (!url) {
             alert("Please enter a URL.");
             return;
         }
 
-        archiveInput.value = "";
+        importInput.value = "";
 
-        const originalButtonHTML = archiveBtn.innerHTML;
+        const originalButtonHTML = importBtn.innerHTML;
 
-        archiveBtn.disabled = true;
-        archiveBtn.innerHTML = `<span class="spinner"></span>Importing...`;
+        importBtn.disabled = true;
+        importBtn.innerHTML = `<span class="spinner"></span>Importing...`;
 
         try {
             const existingDownloads = await fetchDownloadStatus();
-            const existingDownloadIds = new Set(
-                existingDownloads
-                    .filter(item => !isArchiveRequest(item))
-                    .map(item => item.id)
-            );
-            const result = await archiveTrack(url);
+            const existingDownloadIds = new Set(existingDownloads.map(item => item.id));
 
-            await waitForArchiveStatus(result.request_id, existingDownloadIds);
+            await importTrack(url);
+            await waitForNewDownloadStatus(existingDownloadIds);
         } catch (error) {
-            console.error("Archive failed:", error);
-            alert(error.message || "Archive failed.");
+            console.error("Import failed:", error);
+            alert(error.message || "Import failed.");
         } finally {
-            archiveBtn.disabled = false;
-            archiveBtn.innerHTML = originalButtonHTML;
+            importBtn.disabled = false;
+            importBtn.innerHTML = originalButtonHTML;
         }
     }
 
     async function deleteTrack(youtube_id) {
-        const confirmation = confirm("Are you sure you want to delete this track? This action cannot be undone.");
-
-        if (!confirmation) {
-            return;
-        }
-
         const response = await requestDeleteTrack(youtube_id);
 
         if (!response.ok) {
-            alert("Failed to delete track. " + response.status + ": " + (response.statusText || "Unknown error"));
+            const result = await response.json().catch(() => ({}));
+            alert(result.error || "Failed to delete track. " + response.status + ": " + (response.statusText || "Unknown error"));
             return;
         }
+
+        const result = await response.json();
+        const deletedTrack = result.track || tracks.find(track => track.youtube_id === youtube_id);
 
         tracks = tracks.filter(track => track.youtube_id !== youtube_id);
         delete fakeProcessingProgress[youtube_id];
         completedDownloadIds.delete(youtube_id);
         renderTracks();
+
+        if (deletedTrack) {
+            showUndoToast(deletedTrack);
+        }
     }
 
     async function dismissDownload(downloadId) {

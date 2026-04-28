@@ -5,9 +5,11 @@ __pycache__/
 data/audios/*
 data/thumbnails/*
 data/incomplete/*
+data/auth/*
 settings.json
 audioio.db
 
 .env
+*.log
 *.md
 !README.md

@@ -1,5 +1,8 @@
 const settingsGroups = document.getElementById("settings-groups");
 const saveResult = document.getElementById("settings-save-result");
+const cookiesFile = document.getElementById("cookies-file");
+const cookiesUploadButton = document.getElementById("cookies-upload");
+const cookiesUploadResult = document.getElementById("cookies-upload-result");
 
 let currentSettings = null;
 
@@ -99,6 +102,46 @@ async function saveSettings(updates) {
     }
 
     return await response.json();
+}
+
+async function uploadCookiesFile() {
+    const file = cookiesFile?.files?.[0];
+
+    if (!file) {
+        setStatus(cookiesUploadResult, "Choose cookies.txt first.", "error");
+        return;
+    }
+
+    if (file.name !== "cookies.txt") {
+        setStatus(cookiesUploadResult, "File must be named cookies.txt.", "error");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("cookies", file);
+
+    cookiesUploadButton.disabled = true;
+    setStatus(cookiesUploadResult, "Uploading...", null);
+
+    try {
+        const response = await fetch("/api/auth/cookies", {
+            method: "POST",
+            body: formData
+        });
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || `Upload failed: ${response.status}`);
+        }
+
+        cookiesFile.value = "";
+        setStatus(cookiesUploadResult, "cookies.txt uploaded.", "success");
+    } catch (error) {
+        console.error(error);
+        setStatus(cookiesUploadResult, error.message || "Failed to upload cookies.txt.", "error");
+    } finally {
+        cookiesUploadButton.disabled = false;
+    }
 }
 
 function getSettingValueFromControl(control, setting) {
@@ -351,3 +394,7 @@ async function loadSettingsPage() {
 }
 
 loadSettingsPage();
+
+if (cookiesUploadButton) {
+    cookiesUploadButton.addEventListener("click", uploadCookiesFile);
+}

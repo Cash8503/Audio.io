@@ -1,12 +1,47 @@
-import os
-
 from flask import Flask, render_template, jsonify, send_from_directory, request
+import atexit
+import faulthandler
 import logging
+import signal
+import sys
+import threading
 import database
 import downloader
 import settings as settings_helper
 from config import *
 from threading import Thread
+
+LOG_PATH = DATA_DIR / "audioio.log"
+_fatal_log_file = None
+
+
+def configure_logging():
+    global _fatal_log_file
+
+    DATA_DIR.mkdir(exist_ok=True)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        handlers=[
+            logging.FileHandler(LOG_PATH, encoding="utf-8"),
+            logging.StreamHandler(sys.stdout),
+        ],
+        force=True,
+    )
+
+    _fatal_log_file = open(LOG_PATH, "a", encoding="utf-8")
+    faulthandler.enable(file=_fatal_log_file)
+
+
+configure_logging()
+
+
+def log_process_exit():
+    logging.warning("Audio.io process exiting")
+
+
+atexit.register(log_process_exit)
 
 app = Flask(__name__, static_folder="static")
 
@@ -17,6 +52,67 @@ class IgnoreRouteFilter(logging.Filter):
 logging.getLogger("werkzeug").addFilter(IgnoreRouteFilter())
 
 # HELPERS --------------------------------------------
+
+def log_uncaught_exception(exc_type, exc_value, exc_traceback):
+    logging.critical(
+        "Uncaught exception",
+        exc_info=(exc_type, exc_value, exc_traceback)
+    )
+
+
+def log_thread_exception(args):
+    logging.critical(
+        "Uncaught exception in thread %s",
+        args.thread.name,
+        exc_info=(args.exc_type, args.exc_value, args.exc_traceback)
+    )
+
+
+sys.excepthook = log_uncaught_exception
+threading.excepthook = log_thread_exception
+
+
+def install_signal_logging():
+    signal_names = ["SIGINT", "SIGTERM"]
+
+    if hasattr(signal, "SIGBREAK"):
+        signal_names.append("SIGBREAK")
+
+    for signal_name in signal_names:
+        signum = getattr(signal, signal_name)
+        previous_handler = signal.getsignal(signum)
+
+        def handler(received_signum, frame, *, name=signal_name, previous=previous_handler):
+            logging.warning("Received %s; shutting down", name)
+
+            if callable(previous):
+                return previous(received_signum, frame)
+
+            if received_signum == signal.SIGTERM:
+                raise SystemExit(0)
+
+            raise KeyboardInterrupt
+
+        signal.signal(signum, handler)
+
+
+install_signal_logging()
+
+
+def start_background_task(name, target, *args):
+    def runner():
+        app.logger.info("Background task started: %s", name)
+
+        try:
+            target(*args)
+        except Exception:
+            app.logger.exception("Background task failed: %s", name)
+        finally:
+            app.logger.info("Background task finished: %s", name)
+
+    thread = Thread(target=runner, name=name, daemon=True)
+    thread.start()
+    return thread
 
 # Flask Endpoints ------------------------------------
 
@@ -46,9 +142,27 @@ def update_settings():
     new_quality = settings_helper.get_setting_value("audio_quality", "192")
 
     if "audio_quality" in updates and str(old_quality) != str(new_quality):
-        Thread(target=downloader.redownload_all_for_quality, daemon=True).start()
+        start_background_task(
+            "redownload-all-for-quality",
+            downloader.redownload_all_for_quality
+        )
 
     return jsonify({"ok": True})
+
+@app.route("/api/auth/cookies", methods=["POST"])
+def upload_cookies():
+    cookies_file = request.files.get("cookies")
+
+    if not cookies_file:
+        return jsonify({"ok": False, "error": "Missing cookies.txt file"}), 400
+
+    if cookies_file.filename != "cookies.txt":
+        return jsonify({"ok": False, "error": "Upload a file named cookies.txt"}), 400
+
+    AUTH_DIR.mkdir(parents=True, exist_ok=True)
+    cookies_file.save(COOKIE_PATH)
+
+    return jsonify({"ok": True, "path": str(COOKIE_PATH)}), 200
 
 @app.route("/api/audios")
 def api_audios():
@@ -67,14 +181,17 @@ def thumbnail(filename):
 
 
 
-@app.route("/import/<path:url>", methods=["POST"])
-def importReq(url):
-    Thread(
-        target=downloader.extract_playlist,
-        args=(url,),
-        daemon=True
-    ).start()
-    return jsonify({"ok": True})
+@app.route("/api/import", methods=["POST"])
+def import_request():
+    data = request.get_json(silent=True) or {}
+    url = str(data.get("url", "")).strip()
+
+    if not url:
+        return jsonify({"ok": False, "error": "Missing URL"}), 400
+
+    start_background_task("import", downloader.extract_playlist, url)
+
+    return jsonify({"ok": True}), 202
 @app.route("/api/downloads")
 def api_downloads():
     with downloader.download_status_lock:
@@ -104,6 +221,11 @@ def delete_audio(youtube_id):
     if not youtube_id:
         return jsonify({"ok": False, "error": "Missing YouTube ID"}), 400
 
+    track = database.get_audio_record(youtube_id)
+
+    if not track:
+        return jsonify({"ok": False, "error": "Track not found"}), 404
+
     deleted = database.delete_audio(youtube_id)
 
     with downloader.download_status_lock:
@@ -112,14 +234,36 @@ def delete_audio(youtube_id):
     if not deleted:
         return jsonify({"ok": False, "error": "Track not found"}), 404
 
-    return jsonify({"ok": True, "deleted": youtube_id}), 200
+    return jsonify({"ok": True, "deleted": youtube_id, "track": track}), 200
 
-# Run ------------------------------------------------
-if __name__ == "__main__":
+@app.route("/api/audios/<youtube_id>/restore", methods=["POST"])
+def restore_audio(youtube_id):
+    data = request.get_json(silent=True) or {}
+    track = data.get("track") if isinstance(data.get("track"), dict) else data
+
+    if not youtube_id:
+        return jsonify({"ok": False, "error": "Missing YouTube ID"}), 400
+
+    if not isinstance(track, dict):
+        return jsonify({"ok": False, "error": "Missing track data"}), 400
+
+    track["youtube_id"] = youtube_id
+
+    if not track.get("title"):
+        return jsonify({"ok": False, "error": "Missing track title"}), 400
+
+    database.add_audio(track)
+
+    restored = database.get_audio_record(youtube_id)
+    return jsonify({"ok": True, "restored": restored}), 200
+
+def run_app():
+
     settings_helper.sync_settings()
 
     database.init_db()
     downloader.check_dirs()
+    downloader.ensure_cookie_file()
 
     if settings_helper.get_setting_value("auto_cull_orphan_files", True):
         downloader.find_and_cull_orphan_files()
@@ -132,5 +276,20 @@ if __name__ == "__main__":
 
     print("All files pass validation.")
     print("Audio.io is running at http://localhost:8000")
+    app.logger.info("Audio.io startup complete")
 
     app.run(host="0.0.0.0", port=8000, debug=False, use_reloader=False)
+    app.logger.warning("Flask server stopped; app.run returned normally")
+
+
+# Run ------------------------------------------------
+if __name__ == "__main__":
+    try:
+        run_app()
+    except KeyboardInterrupt:
+        app.logger.warning("Audio.io stopped by keyboard interrupt")
+    except SystemExit:
+        app.logger.warning("Audio.io stopped by system exit")
+    except BaseException:
+        app.logger.exception("Audio.io stopped by unexpected base exception")
+        raise

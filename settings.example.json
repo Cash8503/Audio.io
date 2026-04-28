@@ -21,7 +21,7 @@
   },
   "audio_quality": {
     "label": "Audio Quality",
-    "description": "MP3 bitrate used for new downloads. Changing this will re-download existing tracks.",
+    "description": "Target MP3 bitrate. Audio.io chooses the closest available source quality and stores the actual output quality.",
     "group": "Advanced",
     "type": "select",
     "value": "192",

@@ -286,6 +286,58 @@ main {
     line-height: 1;
 }
 
+.undo-toast-container {
+    position: fixed;
+    right: var(--page-edge-gap);
+    bottom: var(--page-edge-gap);
+    z-index: 1200;
+    display: grid;
+    gap: 10px;
+    width: min(420px, calc(100vw - (var(--page-edge-gap) * 2)));
+}
+
+.undo-toast {
+    display: flex;
+    align-items: center;
+    gap: var(--control-gap);
+    padding: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 28px #00000066;
+}
+
+.undo-toast-leaving {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.undo-toast-message {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.undo-toast-button {
+    flex-shrink: 0;
+    border-color: var(--accent);
+}
+
+.undo-toast-close {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--panel);
+    color: var(--muted);
+    cursor: pointer;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
 
 
 .spinner {
@@ -318,6 +370,7 @@ main {
 .settings-subtitle {
     margin: 0 0 20px;
     color: var(--muted);
+    text-align: center;
 }
 .settings-group {
     margin-bottom: var(--section-gap);

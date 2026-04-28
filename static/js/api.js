@@ -29,20 +29,39 @@ async function fetchDownloadStatus() {
 }
 
 async function importTrack(url) {
-    const response = await fetch(`/import/${encodeURIComponent(url)}`, {
-        method: "POST"
+    const response = await fetch("/api/import", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ url })
     });
 
+    const result = await response.json();
+
     if (!response.ok) {
-        return Promise.reject(new Error(`Failed to import track: ${response.status}`));
+        throw new Error(result.error || `Failed to import track: ${response.status}`);
     }
 
-    return await response.json();
+    return result;
 }
 
+
 async function requestDeleteTrack(youtube_id) {
-    const response = await fetch(`/api/audios/${youtube_id}`, {
+    const response = await fetch(`/api/audios/${encodeURIComponent(youtube_id)}`, {
         method: "DELETE"
+    });
+
+    return response;
+}
+
+async function requestRestoreTrack(track) {
+    const response = await fetch(`/api/audios/${encodeURIComponent(track.youtube_id)}/restore`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ track })
     });
 
     return response;

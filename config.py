@@ -8,6 +8,8 @@ SETTINGS_PATH = DATA_DIR / "settings.json"
 AUDIO_DIR = DATA_DIR / "audios"
 THUMBS_DIR = DATA_DIR / "thumbnails"
 INCOMPLETE_DIR = DATA_DIR / "incomplete"
+AUTH_DIR = DATA_DIR / "auth"
+COOKIE_PATH = AUTH_DIR / "cookies.txt"
 STATIC_DIR = BASE_DIR / "static"
 HTML_DIR = STATIC_DIR / "html"
 CSS_DIR = STATIC_DIR / "css"
@@ -28,8 +30,8 @@ YTDL_ARGS = {
 }
 
 FLAT_ARGS = {
-    'extract_flat': True, 
-    'quiet': True, 
+    'extract_flat': True,
+    'quiet': True,
     'no_warnings': True
 }
 
