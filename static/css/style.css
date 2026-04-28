@@ -413,6 +413,16 @@ main {
     color: var(--text);
     accent-color: var(--text);
 }
+.setting-control-group {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.setting-default-button {
+    flex-shrink: 0;
+}
 .toggle {
     position: relative;
     width: 48px;
@@ -517,6 +527,16 @@ main {
 }
 .settings-file-input {
     max-width: 360px;
+}
+.settings-tool-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 14px;
+}
+.settings-tool-input .setting-input {
+    min-width: 180px;
 }
 .settings-action-result {
     margin: 0;
@@ -671,6 +691,17 @@ main {
     .setting-input {
         width: 100%;
     }
+    .setting-control-group {
+        align-items: stretch;
+        justify-content: stretch;
+        width: 100%;
+    }
+    .setting-control-group > *:first-child {
+        flex: 1;
+    }
+    .setting-default-button {
+        width: 100%;
+    }
     .setting-control-with-unit {
         width: 100%;
     }
@@ -694,6 +725,16 @@ main {
     }
     .settings-file-input {
         max-width: none;
+    }
+    .settings-tool-input {
+        align-items: stretch;
+        flex-direction: column;
+        width: 100%;
+    }
+    .settings-tool-input .setting-input,
+    .settings-tool-input .settings-file-input {
+        min-width: 0;
+        width: 100%;
     }
     .sidebar-toggle {
         display: block;

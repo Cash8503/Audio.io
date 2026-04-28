@@ -149,6 +149,24 @@ def update_settings():
 
     return jsonify({"ok": True})
 
+@app.route("/api/settings/<key>/default", methods=["POST"])
+def reset_setting_to_default(key):
+    old_quality = settings_helper.get_setting_value("audio_quality", "192")
+    setting = settings_helper.reset_setting_to_default(key)
+
+    if setting is None:
+        return jsonify({"ok": False, "error": "Setting default not found"}), 404
+
+    new_quality = settings_helper.get_setting_value("audio_quality", "192")
+
+    if key == "audio_quality" and str(old_quality) != str(new_quality):
+        start_background_task(
+            "redownload-all-for-quality",
+            downloader.redownload_all_for_quality
+        )
+
+    return jsonify({"ok": True, "key": key, "setting": setting})
+
 @app.route("/api/auth/cookies", methods=["POST"])
 def upload_cookies():
     cookies_file = request.files.get("cookies")
@@ -162,7 +180,11 @@ def upload_cookies():
     AUTH_DIR.mkdir(parents=True, exist_ok=True)
     cookies_file.save(COOKIE_PATH)
 
-    return jsonify({"ok": True, "path": str(COOKIE_PATH)}), 200
+    return jsonify({
+        "ok": True,
+        "message": "cookies.txt uploaded.",
+        "path": str(COOKIE_PATH)
+    }), 200
 
 @app.route("/api/audios")
 def api_audios():
@@ -264,6 +286,7 @@ def run_app():
     database.init_db()
     downloader.check_dirs()
     downloader.ensure_cookie_file()
+    downloader.check_dirs() #clears any downloads made for cookie registration
 
     if settings_helper.get_setting_value("auto_cull_orphan_files", True):
         downloader.find_and_cull_orphan_files()
@@ -278,7 +301,7 @@ def run_app():
     print("Audio.io is running at http://localhost:8000")
     app.logger.info("Audio.io startup complete")
 
-    app.run(host="0.0.0.0", port=8000, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=8000, debug=True)
     app.logger.warning("Flask server stopped; app.run returned normally")
 
 

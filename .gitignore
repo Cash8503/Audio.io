@@ -13,3 +13,4 @@ audioio.db
 *.log
 *.md
 !README.md
+!SETTINGS_REFERENCE.md

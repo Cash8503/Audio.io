@@ -38,3 +38,11 @@ FLAT_ARGS = {
 
 FFMPEG = str(BASE_DIR / "ffmpeg" / "ffmpeg.exe")
 FFPROBE = str(BASE_DIR / "ffmpeg" / "ffprobe.exe")
+
+
+def get_config_dirs():
+    return [
+        value
+        for key, value in globals().items()
+        if key.endswith("_DIR") and isinstance(value, Path)
+    ]

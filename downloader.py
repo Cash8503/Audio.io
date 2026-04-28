@@ -3,6 +3,7 @@ from pathlib import Path
 from threading import Lock, Thread
 import subprocess
 import database
+import logging
 from datetime import datetime
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
@@ -30,6 +31,8 @@ cookie_init_lock = Lock()
 
 ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
 AUDIO_QUALITY_CHOICES = [128, 192, 256, 320]
+BUSY_DOWNLOAD_STATUSES = {"queued", "starting", "downloading", "finished", "processing", "retrying"}
+logger = logging.getLogger(__name__)
 
 # CLASSES --------------------------------------------
 
@@ -84,7 +87,220 @@ class DownloadStatus:
         return f"{self.title} by {self.uploader} - {self.status} ({self.percent}%, retries: {self.retry_count})"
 
 
+@dataclass
+class TrackRecord:
+    youtube_id: str
+    title: str = "Unknown"
+    uploader: str = "Unknown"
+    duration: float | int = 0
+    audio_path: str = ""
+    thumbnail_path: str = ""
+    description: str = ""
+    audio_quality: str = ""
+    requested_audio_quality: str = ""
+    audio_bitrate: int | None = None
+
+    @classmethod
+    def from_info_dict(cls, info, requested_audio_quality=None):
+        track_id = info.get("id")
+
+        if not track_id:
+            raise ValueError("Could not determine video ID")
+
+        return cls(
+            youtube_id=track_id,
+            title=info.get("title") or "Unknown",
+            uploader=(
+                info.get("uploader")
+                or info.get("channel")
+                or info.get("creator")
+                or "Unknown"
+            ),
+            duration=info.get("duration") or get_duration(AUDIO_DIR / f"{track_id}.mp3"),
+            description=info.get("description") or "",
+            requested_audio_quality=str(requested_audio_quality or ""),
+        )
+
+    @classmethod
+    def from_db_row(cls, row):
+        return cls(
+            youtube_id=row.get("youtube_id") or "",
+            title=row.get("title") or "Unknown",
+            uploader=row.get("uploader") or "Unknown",
+            duration=row.get("duration") or 0,
+            audio_path=row.get("audio_path") or "",
+            thumbnail_path=row.get("thumbnail_path") or "",
+            description=row.get("description") or "",
+            audio_quality=str(row.get("audio_quality") or ""),
+            requested_audio_quality=str(row.get("requested_audio_quality") or ""),
+            audio_bitrate=row.get("audio_bitrate"),
+        )
+
+    def set_files(
+        self,
+        *,
+        audio_path,
+        thumbnail_path,
+        audio_quality,
+        requested_audio_quality,
+        audio_bitrate,
+    ):
+        self.audio_path = str(audio_path or "")
+        self.thumbnail_path = str(thumbnail_path or "")
+        self.audio_quality = str(audio_quality or "")
+        self.requested_audio_quality = str(requested_audio_quality or "")
+        self.audio_bitrate = audio_bitrate
+
+    def to_db_dict(self):
+        return asdict(self)
+
+
+@dataclass
+class TrackFileState:
+    db_exists: bool
+    audio_file: Path | None = None
+    thumbnail_file: Path | None = None
+
+    @property
+    def audio_exists(self) -> bool:
+        return self.audio_file is not None
+
+    @property
+    def thumbnail_exists(self) -> bool:
+        return self.thumbnail_file is not None
+
+    @property
+    def complete(self) -> bool:
+        return self.db_exists and self.audio_exists and self.thumbnail_exists
+
+    @property
+    def needs_download(self) -> bool:
+        return not self.complete
+
+    @property
+    def save_to_db(self) -> bool:
+        return not self.db_exists
+
+
+@dataclass
+class MissingTrackFiles:
+    track: TrackRecord
+    audio_missing: bool = False
+    thumbnail_missing: bool = False
+
+
+@dataclass
+class DownloadJob:
+    track_id: str
+    track_url: str
+    title: str = "Unknown"
+    uploader: str = "Unknown"
+    force_redownload: bool = False
+
+    @classmethod
+    def from_info_dict(cls, info, track_url, force_redownload=False):
+        track_id = info.get("id")
+
+        if not track_id:
+            raise ValueError("Could not determine video ID")
+
+        return cls(
+            track_id=track_id,
+            track_url=track_url,
+            title=info.get("title") or "Unknown",
+            uploader=info.get("uploader") or "Unknown",
+            force_redownload=force_redownload,
+        )
+
+    @classmethod
+    def from_db_row(cls, row, force_redownload=False):
+        track_id = row.get("youtube_id")
+
+        if not track_id:
+            raise ValueError("Database row is missing youtube_id")
+
+        return cls(
+            track_id=track_id,
+            track_url=youtube_watch_url(track_id),
+            title=row.get("title") or "Unknown",
+            uploader=row.get("uploader") or "Unknown",
+            force_redownload=force_redownload,
+        )
+
+    @classmethod
+    def from_mapping(cls, item, force_redownload=False):
+        return cls(
+            track_id=item["track_id"],
+            track_url=item["track_url"],
+            title=item.get("title", "Unknown"),
+            uploader=item.get("uploader", "Unknown"),
+            force_redownload=item.get("force_redownload", force_redownload),
+        )
+
+
+@dataclass
+class DownloadResult:
+    ok: bool
+    track_id: str
+    downloaded_bytes: int = 0
+    output_bytes: int = 0
+    skipped: bool = False  # type: ignore
+    error: str | None = None
+    retry_count: int = 0
+
+    @classmethod
+    def success(cls, track_id, downloaded_bytes=0, output_bytes=0):
+        return cls(
+            ok=True,
+            track_id=track_id,
+            downloaded_bytes=downloaded_bytes or 0,
+            output_bytes=output_bytes or 0,
+        )
+
+    @classmethod
+    def skipped(cls, track_id):
+        return cls(ok=True, track_id=track_id, skipped=True)
+
+    @classmethod
+    def failure(cls, track_id, error, retry_count=0):
+        return cls(
+            ok=False,
+            track_id=track_id,
+            error=error,
+            retry_count=retry_count,
+        )
+
+    def get(self, key, default=None):
+        return getattr(self, key, default)
+
+    def to_dict(self):
+        return asdict(self)
+
+
+@dataclass
+class ImportResult:
+    queued_count: int = 0
+    title: str = "Imported Track"
+    uploader: str = ""
+
+    def to_dict(self):
+        return asdict(self)
+
+
 # HELPERS --------------------------------------------
+
+def youtube_watch_url(track_id) -> str:
+    return f"https://www.youtube.com/watch?v={track_id}"
+
+
+def get_configured_max_workers() -> int:
+    try:
+        max_workers = int(settings_helper.get_setting_value("max_workers", MAX_WORKERS))
+    except (TypeError, ValueError):
+        return MAX_WORKERS
+
+    return max(1, max_workers)
+
 
 def is_uploaded_cookie_file() -> bool:
     if not COOKIE_PATH.exists():
@@ -112,8 +328,8 @@ def ensure_cookie_file() -> bool:
                 'outtmpl': str(INCOMPLETE_DIR / "%(id)s.%(ext)s")
             }) as ydl: # type: ignore
                 ydl.extract_info("https://www.youtube.com/watch?v=jNQXAC9IVRw", download=True)
-        except Exception as error:
-            pass
+        except Exception:
+            logger.debug("Could not bootstrap YouTube cookies", exc_info=True)
 
         if COOKIE_PATH.exists():
             return True
@@ -192,6 +408,7 @@ def get_audio_bitrate(file_path) -> int | None:
 
         return round(int(bit_rate) / 1000)
     except Exception:
+        logger.debug("Could not read audio bitrate for %s", file_path, exc_info=True)
         return None
 
 def get_ytdl_args(preferred_quality=None, format_id=None):# -> dict[str, Any]:
@@ -230,14 +447,17 @@ def get_flat_ytdl_args() -> dict[str, bool | str]:
     return args
 
 def check_dirs():
-    DATA_DIR.mkdir(exist_ok=True)
-    AUDIO_DIR.mkdir(exist_ok=True)
-    THUMBS_DIR.mkdir(exist_ok=True)
-    INCOMPLETE_DIR.mkdir(exist_ok=True)
-    AUTH_DIR.mkdir(exist_ok=True)
+    for directory in get_config_dirs():
+        directory.mkdir(parents=True, exist_ok=True)
 
     for item in INCOMPLETE_DIR.iterdir():
-        item.unlink()
+        if not item.is_file():
+            continue
+
+        try:
+            item.unlink()
+        except OSError:
+            logger.warning("Could not remove incomplete file: %s", item, exc_info=True)
 
 def get_duration(file_path) -> float | Literal[0]:
     try:
@@ -266,7 +486,7 @@ def save_thumbnail(track_id, src_path) -> str:
         if dest.exists():
             return str(dest)
     except Exception:
-        pass
+        logger.debug("Could not save thumbnail for %s", track_id, exc_info=True)
     return ''
 
 def find_existing_audio_file(track_id) -> Path | None:
@@ -326,18 +546,19 @@ def find_and_cull_orphan_files() -> int:
 def find_db_rows_with_missing_files():
     missing = []
 
-    for track in database.get_all_audio():
-        track_id = track["youtube_id"]
+    for row in database.get_all_audio():
+        track = TrackRecord.from_db_row(row)
+        track_id = track.youtube_id
 
         audio_missing = find_existing_audio_file(track_id) is None
         thumbnail_missing = find_existing_thumbnail_file(track_id) is None
 
         if audio_missing or thumbnail_missing:
-            missing.append({
-                "track": track,
-                "audio_missing": audio_missing,
-                "thumbnail_missing": thumbnail_missing,
-            })
+            missing.append(MissingTrackFiles(
+                track=track,
+                audio_missing=audio_missing,
+                thumbnail_missing=thumbnail_missing,
+            ))
 
     return missing
 
@@ -348,37 +569,18 @@ def redownload_missing_files() -> None:
         return
 
     for item in missing:
-        track = item["track"]
-        track_id = track["youtube_id"]
-        track_url = f"https://www.youtube.com/watch?v={track_id}"
+        download_single(youtube_watch_url(item.track.youtube_id), save_to_db=False)
 
-        if item["audio_missing"] and item["thumbnail_missing"]:
-            reason = "audio and thumbnail missing"
-        elif item["audio_missing"]:
-            reason = "audio missing"
-        else:
-            reason = "thumbnail missing"
-
-        download_single(track_url, save_to_db=False)
-
-def get_track_state(track_id):# -> dict[str, Any]:
+def get_track_state(track_id) -> TrackFileState:
     db_exists = database.audio_exists(track_id)
     audio_file = find_existing_audio_file(track_id)
     thumbnail_file = find_existing_thumbnail_file(track_id)
 
-    audio_exists = audio_file is not None
-    thumbnail_exists = thumbnail_file is not None
-
-    return {
-        "db_exists": db_exists,
-        "audio_exists": audio_exists,
-        "thumbnail_exists": thumbnail_exists,
-        "complete": db_exists and audio_exists and thumbnail_exists,
-        "needs_download": not (db_exists and audio_exists and thumbnail_exists),
-        "save_to_db": not db_exists,
-        "audio_file": audio_file,
-        "thumbnail_file": thumbnail_file,
-    }
+    return TrackFileState(
+        db_exists=db_exists,
+        audio_file=audio_file,
+        thumbnail_file=thumbnail_file,
+    )
 
 def clean_download_error(error) -> str:
     message = str(error)
@@ -585,26 +787,24 @@ def get_download_status_snapshot(download_id):
     return dict(status) if status else None
 
 def is_download_busy(track_id):
-    busy_statuses = {"queued", "starting", "downloading", "finished", "processing"}
-
     with download_queue_lock:
         if track_id in queued_downloads or track_id in active_download_ids:
             return True
 
     status = get_download_status_snapshot(track_id)
 
-    return status is not None and status.get("status") in busy_statuses
+    return status is not None and status.get("status") in BUSY_DOWNLOAD_STATUSES
 
-def pop_next_queued_download():
+def pop_next_queued_download() -> DownloadJob | None:
     with download_queue_lock:
         if not queued_downloads:
             return None
 
         track_id = next(iter(queued_downloads))
-        item = queued_downloads.pop(track_id)
+        job = queued_downloads.pop(track_id)
         active_download_ids.add(track_id)
 
-        return item
+        return job
 
 def finish_active_download(track_id):
     with download_queue_lock:
@@ -613,7 +813,7 @@ def finish_active_download(track_id):
 def enqueue_downloads(download_items: dict, batch_title: str, force_redownload=False):
     global batch_worker_running
 
-    added_items = []
+    added_jobs = []
 
     with download_queue_lock:
         for track_id, item in download_items.items():
@@ -621,26 +821,24 @@ def enqueue_downloads(download_items: dict, batch_title: str, force_redownload=F
                 continue
 
             status = get_download_status_snapshot(track_id)
-            if status and status.get("status") in {"queued", "starting", "downloading", "finished", "processing"}:
+            if status and status.get("status") in BUSY_DOWNLOAD_STATUSES:
                 continue
 
-            queued_item = {
-                **item,
-                "force_redownload": force_redownload,
-            }
-            queued_downloads[track_id] = queued_item
-            added_items.append(queued_item)
+            job = item if isinstance(item, DownloadJob) else DownloadJob.from_mapping(item, force_redownload)
+            job.force_redownload = job.force_redownload or force_redownload
+            queued_downloads[track_id] = job
+            added_jobs.append(job)
 
-    if not added_items:
+    if not added_jobs:
         return 0
 
-    batch_id = get_active_batch_id(batch_title, len(added_items))
+    get_active_batch_id(batch_title, len(added_jobs))
 
-    for item in added_items:
+    for job in added_jobs:
         update_download_status(
-            item["track_id"],
-            title=item.get("title", "Unknown"),
-            uploader=item.get("uploader", "Unknown"),
+            job.track_id,
+            title=job.title,
+            uploader=job.uploader,
             status="queued",
             percent=0
         )
@@ -650,44 +848,44 @@ def enqueue_downloads(download_items: dict, batch_title: str, force_redownload=F
             batch_worker_running = True
             Thread(target=run_batch_worker, name="single-download-batch-worker", daemon=True).start()
 
-    return len(added_items)
+    return len(added_jobs)
 
 def run_batch_worker():
     global batch_worker_running
 
     try:
-        max_workers = settings_helper.get_setting_value("max_workers", MAX_WORKERS)
+        max_workers = get_configured_max_workers()
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_item = {}
+            future_to_job = {}
 
             while True:
-                while len(future_to_item) < max_workers:
-                    item = pop_next_queued_download()
+                while len(future_to_job) < max_workers:
+                    job = pop_next_queued_download()
 
-                    if not item:
+                    if not job:
                         break
 
                     future = executor.submit(
                         download_single,
-                        item["track_url"],
+                        job.track_url,
                         True,
-                        item["track_id"],
-                        item.get("force_redownload", False)
+                        job.track_id,
+                        job.force_redownload
                     )
-                    future_to_item[future] = item
+                    future_to_job[future] = job
 
-                if not future_to_item:
+                if not future_to_job:
                     with download_queue_lock:
                         if not queued_downloads:
                             break
 
                     continue
 
-                done, _ = wait(future_to_item, return_when=FIRST_COMPLETED)
+                done, _ = wait(future_to_job, return_when=FIRST_COMPLETED)
 
                 for future in done:
-                    item = future_to_item.pop(future)
+                    job = future_to_job.pop(future)
                     result = None
 
                     try:
@@ -695,25 +893,25 @@ def run_batch_worker():
                     except Exception as error:
                         clean_error = clean_download_error(error)
                         update_download_status(
-                            item["track_id"],
+                            job.track_id,
                             status="error",
                             percent=0,
                             error=clean_error
                         )
-                        increment_download_retry(item["track_id"])
-                        result = {"ok": False, "error": clean_error}
+                        retry_count = increment_download_retry(job.track_id)
+                        result = DownloadResult.failure(job.track_id, clean_error, retry_count)
 
-                    finish_active_download(item["track_id"])
+                    finish_active_download(job.track_id)
 
-                    if not result or result.get("ok") is False:
+                    if not result or not result.ok:
                         update_download_batch(current_batch_id, failed_delta=1)
                         continue
 
                     update_download_batch(
                         current_batch_id,
                         completed_delta=1,
-                        downloaded_bytes_delta=result.get("downloaded_bytes", 0),
-                        output_bytes_delta=result.get("output_bytes", 0),
+                        downloaded_bytes_delta=result.downloaded_bytes,
+                        output_bytes_delta=result.output_bytes,
                     )
 
     finally:
@@ -729,7 +927,7 @@ def get_file_size(path):
         if path.exists():
             return path.stat().st_size
     except Exception:
-        pass
+        logger.debug("Could not read file size for %s", path, exc_info=True)
 
     return 0
 
@@ -759,60 +957,38 @@ def download_single(
         with yt_dlp.YoutubeDL(get_ytdl_args()) as ydl: # pyright: ignore[reportArgumentType]
             track_info = ydl.extract_info(track_url, download=False)
 
-        track_id = track_info.get("id")
-        title = track_info.get('title', 'Unknown')
-        description = track_info.get('description', 'Unknown')
-        artist = track_info.get('uploader') or track_info.get('channel') or track_info.get('creator') or ''
-        duration = track_info.get('duration') or get_duration(AUDIO_DIR / f"{track_id}.mp3")
+        track = TrackRecord.from_info_dict(track_info, requested_audio_quality=target_quality)
+        track_id = track.youtube_id
         selected_format_id, selected_source_bitrate = choose_closest_audio_format(track_info, target_quality)
         output_quality = closest_audio_quality(selected_source_bitrate, fallback=target_quality)
 
-        if not track_id:
-            raise ValueError("Could not determine video ID")
-
         track_state = get_track_state(track_id)
 
-        if track_state["complete"] and not force_redownload:
-            return {
-                "ok": True,
-                "track_id": track_id,
-                "skipped": True,
-                "downloaded_bytes": 0,
-                "output_bytes": 0,
-            }
+        if track_state.complete and not force_redownload:
+            return DownloadResult.skipped(track_id)
 
-        if track_state["db_exists"] and not force_redownload:
+        if track_state.db_exists and not force_redownload:
             save_to_db = False
 
-        elif track_state["audio_exists"] and track_state["thumbnail_exists"] and not force_redownload:
-            audio_bitrate = get_audio_bitrate(track_state["audio_exists"])
+        elif track_state.audio_exists and track_state.thumbnail_exists and not force_redownload:
+            audio_bitrate = get_audio_bitrate(track_state.audio_file)
             actual_quality = closest_audio_quality(audio_bitrate, fallback=output_quality)
-            database.add_audio({
-                "youtube_id": track_id,
-                "title": title,
-                "uploader": artist,
-                "duration": duration,
-                "audio_path": str(track_state["audio_exists"]),
-                "thumbnail_path": track_state["thumbnail_exists"],
-                "audio_quality": str(actual_quality),
-                "requested_audio_quality": str(target_quality),
-                "audio_bitrate": audio_bitrate,
-                "description": description
-                }
+
+            track.set_files(
+                audio_path=track_state.audio_file,
+                thumbnail_path=track_state.thumbnail_file,
+                audio_quality=actual_quality,
+                requested_audio_quality=target_quality,
+                audio_bitrate=audio_bitrate,
             )
-            update_download_status(track_id, title=title, uploader=artist, percent=100, status="complete")
-            return {
-                "ok": True,
-                "track_id": track_id,
-                "skipped": True,
-                "downloaded_bytes": 0,
-                "output_bytes": 0,
-            }
+            database.add_audio(track.to_db_dict())
+            update_download_status(track_id, title=track.title, uploader=track.uploader, percent=100, status="complete")
+            return DownloadResult.skipped(track_id)
 
         update_download_status(
             track_id,
-            title= title,
-            uploader= artist,
+            title=track.title,
+            uploader=track.uploader,
             status="starting",
             percent=0
         )
@@ -839,22 +1015,19 @@ def download_single(
         if thumb_src:
             thumb = save_thumbnail(track_id, thumb_src)
 
-        if save_to_db:
-            audio_bitrate = get_audio_bitrate(mp3)
-            actual_quality = closest_audio_quality(audio_bitrate, fallback=output_quality)
-            database.add_audio({
-                "youtube_id": track_id,
-                "title": title,
-                "uploader": artist,
-                "duration": duration,
-                "audio_path": str(mp3),
-                "thumbnail_path": thumb,
-                "audio_quality": str(actual_quality),
-                "requested_audio_quality": str(target_quality),
-                "audio_bitrate": audio_bitrate,
-                "description": description
-            }
+        audio_bitrate = get_audio_bitrate(mp3)
+        actual_quality = closest_audio_quality(audio_bitrate, fallback=output_quality)
+        track.set_files(
+            audio_path=mp3,
+            thumbnail_path=thumb,
+            audio_quality=actual_quality,
+            requested_audio_quality=target_quality,
+            audio_bitrate=audio_bitrate,
         )
+
+        if save_to_db:
+            database.add_audio(track.to_db_dict())
+
         output_bytes = get_file_size(mp3)
 
         update_download_status(track_id, status="complete", percent=100)
@@ -862,12 +1035,11 @@ def download_single(
         status_obj = get_download_status(track_id)
         downloaded_bytes = status_obj.downloaded_bytes if status_obj else 0
 
-        return {
-            "ok": True,
-            "track_id": track_id,
-            "downloaded_bytes": downloaded_bytes,
-            "output_bytes": output_bytes,
-        }
+        return DownloadResult.success(
+            track_id,
+            downloaded_bytes=downloaded_bytes,
+            output_bytes=output_bytes,
+        )
     except Exception as e:
         error_id = track_id or track_url
         clean_error = clean_download_error(e)
@@ -899,14 +1071,7 @@ def download_single(
         )
         retry_count = increment_download_retry(error_id)
 
-        return {
-            "ok": False,
-            "track_id": error_id,
-            "error": clean_error,
-            "retry_count": retry_count,
-            "downloaded_bytes": 0,
-            "output_bytes": 0,
-        }
+        return DownloadResult.failure(error_id, clean_error, retry_count)
 
 def batch_download(download_queue: dict, playlist_title: str, force_redownload=False):
     return enqueue_downloads(download_queue, playlist_title, force_redownload=force_redownload)
@@ -921,31 +1086,25 @@ def extract_playlist(track_url):
         track_id = playlist_info.get("id")
 
         if not track_id:
-            return {
-                "queued_count": 0,
-                "title": playlist_info.get("title") or "Imported Track",
-                "uploader": playlist_info.get("uploader", ""),
-            }
+            return ImportResult(
+                queued_count=0,
+                title=playlist_info.get("title") or "Imported Track",
+                uploader=playlist_info.get("uploader", ""), # type: ignore
+            )
 
         track_state = get_track_state(track_id)
 
-        if track_state["complete"] or is_download_busy(track_id):
+        if track_state.complete or is_download_busy(track_id):
             queued_count = 0
         else:
-            queued_count = batch_download({
-                track_id: {
-                    "track_id": track_id,
-                    "track_url": track_url,
-                    "title": playlist_info.get("title", "Unknown"),
-                    "uploader": playlist_info.get("uploader", "Unknown"),
-                }
-            }, playlist_info.get("title") or "Imported Track")
+            job = DownloadJob.from_info_dict(playlist_info, track_url)
+            queued_count = batch_download({track_id: job}, playlist_info.get("title") or "Imported Track")
 
-        return {
-            "queued_count": queued_count,
-            "title": playlist_info.get("title") or "Imported Track",
-            "uploader": playlist_info.get("uploader", ""),
-        }
+        return ImportResult(
+            queued_count=queued_count,
+            title=playlist_info.get("title") or "Imported Track",
+            uploader=playlist_info.get("uploader", ""), # type: ignore
+        )
 
     for entry in entries:
         track_id = entry.get("id")
@@ -953,27 +1112,21 @@ def extract_playlist(track_url):
         if not track_id:
             continue
 
-        track_url = f"https://www.youtube.com/watch?v={track_id}"
+        track_url = youtube_watch_url(track_id)
         track_state = get_track_state(track_id)
 
-        if track_state["complete"] or is_download_busy(track_id):
+        if track_state.complete or is_download_busy(track_id):
             continue
 
-        track_url = f"https://www.youtube.com/watch?v={track_id}"
+        download_queue[track_id] = DownloadJob.from_info_dict(entry, track_url)
 
-        download_queue[track_id] = {
-            "track_id": track_id,
-            "track_url": track_url,
-            "title": entry.get("title", "Unknown"),
-            "uploader": entry.get("uploader", "Unknown"),
-        }
     queued_count = batch_download(download_queue, playlist_info.get("title") or "Imported Playlist")
 
-    return {
-        "queued_count": queued_count,
-        "title": playlist_info.get("title") or "Imported Playlist",
-        "uploader": "",
-    }
+    return ImportResult(
+        queued_count=queued_count,
+        title=playlist_info.get("title") or "Imported Playlist",
+        uploader="",
+    )
 
 def redownload_all_for_quality() -> None:
     target_quality = settings_helper.get_setting_value("audio_quality", "192")
@@ -981,20 +1134,16 @@ def redownload_all_for_quality() -> None:
 
     download_queue = {}
 
-    for track in tracks:
-        track_id = track["youtube_id"]
-        current_quality = track.get("requested_audio_quality") or track.get("audio_quality")
+    for row in tracks:
+        track = TrackRecord.from_db_row(row)
+        current_quality = track.requested_audio_quality or track.audio_quality
 
         if str(current_quality) == str(target_quality):
             continue
 
-        track_url = f"https://www.youtube.com/watch?v={track_id}"
-
-        download_queue[track_id] = {
-            "track_id": track_id,
-            "track_url": track_url,
-            "title": track.get("title", "Unknown"),
-            "uploader": track.get("uploader", "Unknown"),
-        }
+        download_queue[track.youtube_id] = DownloadJob.from_db_row(
+            track.to_db_dict(),
+            force_redownload=True,
+        )
 
     batch_download(download_queue, "Playlist Redownload for Quality Change", force_redownload=True)

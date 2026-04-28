@@ -55,5 +55,23 @@
     "group": "Advanced",
     "type": "boolean",
     "value": true
+  },
+  "tools": {
+    "youtube_cookies": {
+      "label": "YouTube Cookies",
+      "description": "Upload cookies.txt when YouTube blocks downloads. Audio.io will use it automatically for future imports.",
+      "button": {
+        "label": "Upload cookies.txt",
+        "action": "fetch /api/auth/cookies",
+        "method": "POST"
+      },
+      "fileInput": {
+        "name": "cookies",
+        "label": "cookies.txt",
+        "accept": ".txt",
+        "filename": "cookies.txt"
+      },
+      "return": true
+    }
   }
 }

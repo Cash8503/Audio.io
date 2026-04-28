@@ -6,6 +6,7 @@ from config import SETTINGS_PATH, BASE_DIR
 SETTINGS_EXAMPLE_PATH = BASE_DIR / "settings.example.json"
 
 settings_lock = RLock()
+RESERVED_CONFIG_KEYS = {"tools"}
 
 def _read_json(path):
     if not path.exists():
@@ -26,6 +27,10 @@ def _write_json(path, data):
     temp_path.replace(path)
 
 
+def _is_setting_definition(value):
+    return isinstance(value, dict) and "value" in value
+
+
 def sync_settings():
     with settings_lock:
         example = _read_json(SETTINGS_EXAMPLE_PATH)
@@ -34,6 +39,9 @@ def sync_settings():
         merged = deepcopy(example)
 
         for key, example_setting in example.items():
+            if key in RESERVED_CONFIG_KEYS or not _is_setting_definition(example_setting):
+                continue
+
             current_setting = current.get(key)
 
             if isinstance(current_setting, dict) and "value" in current_setting:
@@ -56,6 +64,9 @@ def save_settings(updates):
         settings = _read_json(SETTINGS_PATH)
 
         for key, value in updates.items():
+            if key in RESERVED_CONFIG_KEYS:
+                continue
+
             if key in settings and isinstance(settings[key], dict):
                 settings[key]["value"] = value
             else:
@@ -69,6 +80,20 @@ def save_settings(updates):
 
         _write_json(SETTINGS_PATH, settings)
         return settings
+
+
+def reset_setting_to_default(key):
+    with settings_lock:
+        example = _read_json(SETTINGS_EXAMPLE_PATH)
+        example_setting = example.get(key)
+
+        if key in RESERVED_CONFIG_KEYS or not _is_setting_definition(example_setting):
+            return None
+
+        settings = sync_settings()
+        settings[key] = deepcopy(example_setting)
+        _write_json(SETTINGS_PATH, settings)
+        return settings[key]
 
 
 def get_setting_value(key, default=None):

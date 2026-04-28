@@ -11,33 +11,9 @@ block content %}
 
     <div id="settings-groups"></div>
 
-    <section class="settings-group">
+    <section id="settings-tools-section" class="settings-group" hidden>
         <h3>Tools</h3>
-
-        <div class="settings-tool-panel">
-            <h4>YouTube Cookies</h4>
-            <p class="settings-disclaimer">
-                Upload cookies.txt when YouTube blocks downloads. Audio.io will
-                use it automatically for future imports.
-            </p>
-
-            <div class="settings-action-row">
-                <input
-                    id="cookies-file"
-                    class="settings-file-input"
-                    type="file"
-                    accept=".txt"
-                />
-                <button id="cookies-upload" class="btn" type="button">
-                    Upload cookies.txt
-                </button>
-                <p
-                    id="cookies-upload-result"
-                    class="settings-action-result"
-                    role="status"
-                ></p>
-            </div>
-        </div>
+        <div id="settings-tools"></div>
     </section>
 
     <p
