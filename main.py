@@ -279,7 +279,7 @@ def restore_audio(youtube_id):
     restored = database.get_audio_record(youtube_id)
     return jsonify({"ok": True, "restored": restored}), 200
 
-def run_app():
+def run_app() -> None:
 
     settings_helper.sync_settings()
 

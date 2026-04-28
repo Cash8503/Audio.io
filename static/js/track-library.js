@@ -1,35 +1,3 @@
-function durationToReadable(duration) {
-    duration = Math.floor(duration || 0);
-
-    const hours = Math.floor(duration / 3600);
-    const minutes = Math.floor((duration % 3600) / 60);
-    const seconds = duration % 60;
-
-    const paddedMinutes = String(minutes).padStart(2, "0");
-    const paddedSeconds = String(seconds).padStart(2, "0");
-
-    if (hours > 0) {
-        return hours + ":" + paddedMinutes + ":" + paddedSeconds;
-    }
-
-    return minutes + ":" + paddedSeconds;
-}
-
-function capitalize(text) {
-    if (!text) return "";
-    return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-function thumbnailUrl(trackOrId) {
-    const id = typeof trackOrId === "string" ? trackOrId : trackOrId.youtube_id;
-    return `/thumbnail/${id}.jpg`;
-}
-
-function audioUrl(trackOrId) {
-    const id = typeof trackOrId === "string" ? trackOrId : trackOrId.youtube_id;
-    return `/audio/${id}.mp3`;
-}
-
 function createTrackLibraryState() {
     return {
         search: "",

@@ -17,6 +17,7 @@ block content %}
 {% set track_library_search_placeholder = "Search your library..." %}
 {% include "partials/track_library.html" %}
 {% endblock %} {% block scripts %}
-<script src="{{ url_for('static', filename='js/helpers.js') }}"></script>
+<script src="{{ url_for('static', filename='js/track-library.js') }}"></script>
+<script src="{{ url_for('static', filename='js/track-ui.js') }}"></script>
 <script src="{{ url_for('static', filename='js/player.js') }}"></script>
 {% endblock %}

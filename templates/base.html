@@ -29,8 +29,8 @@
 
         <main class="page-content">{% block content %}{% endblock %}</main>
         <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+        <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
         <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
-        <script src="{{ url_for('static', filename='js/ui.js') }}"></script>
         {% block scripts %}{% endblock %}
     </body>
 </html>
