@@ -7,58 +7,159 @@ block content %}
 
     {% include "partials/audioplayer.html" %}
 
-    <div class="player-buttons">
-        <button class="btn" id="shuffle-button">Shuffle</button>
-        <button class="btn" id="prev-button">Previous</button>
-        <button class="btn" id="next-button">Next</button>
+    <div class="player-control-bar" aria-label="Playback controls">
+        <button
+            class="btn player-icon-button material-symbols-rounded"
+            id="shuffle-button"
+            type="button"
+            aria-label="Shuffle"
+            aria-pressed="false"
+            title="Shuffle"
+        >
+            shuffle
+        </button>
+        <button
+            class="btn player-icon-button material-symbols-rounded"
+            id="prev-button"
+            type="button"
+            aria-label="Previous track"
+            title="Previous"
+        >
+            skip_previous
+        </button>
+        <button
+            class="btn player-icon-button material-symbols-rounded"
+            id="play-pause-button"
+            type="button"
+            aria-label="Play"
+            title="Play"
+        >
+            play_arrow
+        </button>
+        <button
+            class="btn player-icon-button material-symbols-rounded"
+            id="next-button"
+            type="button"
+            aria-label="Next track"
+            title="Next"
+        >
+            skip_next
+        </button>
+
+        <span class="player-time" id="player-current-time">0:00</span>
+        <input
+            class="player-seek"
+            id="player-seek"
+            type="range"
+            min="0"
+            max="100"
+            value="0"
+            step="0.1"
+            aria-label="Seek"
+        />
+        <span class="player-time" id="player-duration">0:00</span>
+
+        <button
+            class="btn player-icon-button material-symbols-rounded"
+            id="volume-button"
+            type="button"
+            aria-label="Mute"
+            title="Mute"
+        >
+            volume_up
+        </button>
+        <input
+            class="player-volume"
+            id="player-volume"
+            type="range"
+            min="0"
+            max="1"
+            value="1"
+            step="0.01"
+            aria-label="Volume"
+        />
     </div>
 
-    <section class="track-metadata-panel" id="track-metadata-panel">
+    <section
+        class="track-metadata-panel is-collapsed"
+        id="track-metadata-panel"
+    >
         <div class="track-metadata-header">
             <h3>Track Details</h3>
-            <button class="btn" id="refresh-metadata-button" type="button" disabled>
-                Refresh Metadata
+        </div>
+
+        <div
+            class="metadata-description-shell is-description-collapsed"
+            id="metadata-description-shell"
+        >
+            <p
+                id="metadata-description"
+                class="metadata-description is-description-collapsed"
+            ></p>
+            <button
+                class="metadata-description-toggle"
+                id="metadata-description-toggle"
+                type="button"
+                aria-expanded="false"
+                aria-controls="metadata-description"
+                hidden
+            >
+                show more
             </button>
         </div>
 
-        <p id="metadata-status" class="metadata-status" role="status">
-            Choose a track to view details.
-        </p>
+        <div class="metadata-details" id="metadata-details" hidden>
+            <div class="metadata-actions">
+                <p id="metadata-status" class="metadata-status" role="status">
+                    Choose a track to view details.
+                </p>
+                <button
+                    class="btn material-symbols-rounded"
+                    id="refresh-metadata-button"
+                    type="button"
+                    disabled
+                >
+                    refresh
+                </button>
+            </div>
 
-        <dl class="metadata-grid">
-            <div>
-                <dt>Duration</dt>
-                <dd id="metadata-duration">-</dd>
-            </div>
-            <div>
-                <dt>Imported</dt>
-                <dd id="metadata-created">-</dd>
-            </div>
-            <div>
-                <dt>Refreshed</dt>
-                <dd id="metadata-refreshed">-</dd>
-            </div>
-            <div>
-                <dt>Quality</dt>
-                <dd id="metadata-quality">-</dd>
-            </div>
-            <div>
-                <dt>Bitrate</dt>
-                <dd id="metadata-bitrate">-</dd>
-            </div>
-            <div>
-                <dt>Files</dt>
-                <dd id="metadata-files">-</dd>
-            </div>
-        </dl>
-
-        <p id="metadata-description" class="metadata-description"></p>
+            <dl class="metadata-grid">
+                <div class="metadata-files-single-cell">
+                    <dt>Duration</dt>
+                    <dd id="metadata-duration">-</dd>
+                </div>
+                <div class="metadata-files-single-cell">
+                    <dt>Imported</dt>
+                    <dd id="metadata-created">-</dd>
+                </div>
+                <div class="metadata-files-single-cell">
+                    <dt>Refreshed</dt>
+                    <dd id="metadata-refreshed">-</dd>
+                </div>
+                <div class="metadata-files-single-cell">
+                    <dt>Files</dt>
+                    <dd id="metadata-files">-</dd>
+                </div>
+                <div class="metadata-files-multi-cell">
+                    <dt>Quality</dt>
+                    <dd id="metadata-bitrate">-</dd>
+                </div>
+            </dl>
+        </div>
+        <button
+            class="btn metadata-toggle-button"
+            id="metadata-toggle-button"
+            type="button"
+            aria-expanded="false"
+            aria-controls="metadata-details"
+        >
+            Show Metadata
+        </button>
     </section>
 </section>
-{% set track_library_heading = "Tracks" %}
-{% set track_library_search_placeholder = "Search your library..." %}
-{% include "partials/track_library.html" %}
-{% endblock %} {% block scripts %}
+{% set track_library_heading = "Tracks" %} {% set
+track_library_search_placeholder = "Search your library..." %} {% include
+"partials/track_library.html" %} {% endblock %} {% block scripts %}
 <script src="{{ url_for('static', filename='js/track-library.js') }}"></script>
 <script src="{{ url_for('static', filename='js/track-ui.js') }}"></script>
 <script src="{{ url_for('static', filename='js/player.js') }}"></script>

@@ -1,24 +1,26 @@
-<button class="sidebar-toggle" id="sidebar-toggle">Menu</button>
+<button class="sidebar-toggle material-symbols-rounded" id="sidebar-toggle">
+    menu
+</button>
 
 <nav class="sidebar" id="sidebar">
     <div class="sidebar-title"><span class="accent-text">Audio</span>.io</div>
 
     <a
-        class="sidebar-link {% if active_page == 'player' %}active{% endif %}"
+        class="btn sidebar-link {% if active_page == 'player' %}active{% endif %}"
         href="/"
     >
         Player
     </a>
 
     <a
-        class="sidebar-link {% if active_page == 'downloads' %}active{% endif %}"
+        class="btn sidebar-link {% if active_page == 'downloads' %}active{% endif %}"
         href="/downloads"
     >
         Downloads
     </a>
 
     <a
-        class="sidebar-link {% if active_page == 'settings' %}active{% endif %}"
+        class="btn sidebar-link {% if active_page == 'settings' %}active{% endif %}"
         href="/settings"
     >
         Settings

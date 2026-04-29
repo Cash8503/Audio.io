@@ -13,35 +13,63 @@
     const nowPlayingThumbnail = document.getElementById("now-playing-thumbnail");
     const shuffleBtn = document.getElementById("shuffle-button");
     const previousTrackBtn = document.getElementById("prev-button");
+    const playPauseBtn = document.getElementById("play-pause-button");
     const nextTrackBtn = document.getElementById("next-button");
+    const playerCurrentTime = document.getElementById("player-current-time");
+    const playerDuration = document.getElementById("player-duration");
+    const playerSeek = document.getElementById("player-seek");
+    const volumeButton = document.getElementById("volume-button");
+    const playerVolume = document.getElementById("player-volume");
     const trackList = document.getElementById("track-list");
+    const metadataPanel = document.getElementById("track-metadata-panel");
+    const metadataToggleButton = document.getElementById("metadata-toggle-button");
+    const metadataDetails = document.getElementById("metadata-details");
     const refreshMetadataButton = document.getElementById("refresh-metadata-button");
     const metadataStatus = document.getElementById("metadata-status");
     const metadataDuration = document.getElementById("metadata-duration");
     const metadataCreated = document.getElementById("metadata-created");
     const metadataRefreshed = document.getElementById("metadata-refreshed");
-    const metadataQuality = document.getElementById("metadata-quality");
     const metadataBitrate = document.getElementById("metadata-bitrate");
     const metadataFiles = document.getElementById("metadata-files");
+    const metadataDescriptionShell = document.getElementById("metadata-description-shell");
     const metadataDescription = document.getElementById("metadata-description");
+    const metadataDescriptionToggle = document.getElementById("metadata-description-toggle");
     const { resultsSummary } = bindTrackLibraryControls(libraryState, renderTracks);
 
     shuffleBtn.addEventListener("click", toggleShuffle);
     previousTrackBtn.addEventListener("click", playPreviousTrack);
+    playPauseBtn.addEventListener("click", playPauseTrack);
     nextTrackBtn.addEventListener("click", playNextTrack);
+    playerSeek.addEventListener("input", seekToSelectedTime);
+    playerVolume.addEventListener("input", updateVolume);
+    volumeButton.addEventListener("click", toggleMute);
+    metadataDescriptionToggle.addEventListener("click", toggleDescription);
+    metadataToggleButton.addEventListener("click", toggleMetadataDetails);
     refreshMetadataButton.addEventListener("click", refreshCurrentTrackMetadata);
+    setMetadataExpanded(false);
+    syncVolumeControl();
+    syncSeekControl();
 
     audioPlayer.addEventListener("play", () => {
+        syncPlayPauseButton();
+
         if ("mediaSession" in navigator) {
             navigator.mediaSession.playbackState = "playing";
         }
     });
 
     audioPlayer.addEventListener("pause", () => {
+        syncPlayPauseButton();
+
         if ("mediaSession" in navigator) {
             navigator.mediaSession.playbackState = "paused";
         }
     });
+
+    audioPlayer.addEventListener("loadedmetadata", syncSeekControl);
+    audioPlayer.addEventListener("durationchange", syncSeekControl);
+    audioPlayer.addEventListener("timeupdate", syncSeekControl);
+    audioPlayer.addEventListener("volumechange", syncVolumeControl);
 
     audioPlayer.addEventListener("ended", () => {
         if ("mediaSession" in navigator) {
@@ -78,6 +106,79 @@
         return shuffled;
     }
 
+    function formatPlaybackTime(seconds) {
+        if (!Number.isFinite(seconds) || seconds < 0) {
+            return "0:00";
+        }
+
+        return durationToReadable(seconds);
+    }
+
+    function setRangeProgress(input, value, max) {
+        const safeMax = Number(max) > 0 ? Number(max) : 1;
+        const percent = Math.min(100, Math.max(0, (Number(value) / safeMax) * 100));
+
+        input.style.setProperty("--range-progress", `${percent}%`);
+    }
+
+    function syncPlayPauseButton() {
+        const isPlaying = !audioPlayer.paused && !audioPlayer.ended;
+
+        playPauseBtn.textContent = isPlaying ? "pause" : "play_arrow";
+        playPauseBtn.setAttribute("aria-label", isPlaying ? "Pause" : "Play");
+        playPauseBtn.title = isPlaying ? "Pause" : "Play";
+    }
+
+    function syncSeekControl() {
+        const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : 0;
+        const currentTime = Number.isFinite(audioPlayer.currentTime) ? audioPlayer.currentTime : 0;
+
+        playerSeek.max = duration > 0 ? String(duration) : "100";
+        playerSeek.value = String(duration > 0 ? Math.min(currentTime, duration) : 0);
+        playerCurrentTime.textContent = formatPlaybackTime(currentTime);
+        playerDuration.textContent = formatPlaybackTime(duration);
+        setRangeProgress(playerSeek, duration > 0 ? currentTime : 0, duration > 0 ? duration : 100);
+    }
+
+    function seekToSelectedTime() {
+        const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : 0;
+
+        if (duration <= 0) {
+            playerSeek.value = "0";
+            setRangeProgress(playerSeek, 0, 100);
+            return;
+        }
+
+        audioPlayer.currentTime = Number(playerSeek.value);
+        syncSeekControl();
+    }
+
+    function syncVolumeControl() {
+        const volume = audioPlayer.muted ? 0 : audioPlayer.volume;
+        const icon = audioPlayer.muted || audioPlayer.volume === 0
+            ? "volume_off"
+            : "volume_up";
+
+        playerVolume.value = String(volume);
+        volumeButton.textContent = icon;
+        volumeButton.setAttribute("aria-label", icon === "volume_off" ? "Unmute" : "Mute");
+        volumeButton.title = icon === "volume_off" ? "Unmute" : "Mute";
+        setRangeProgress(playerVolume, volume, 1);
+    }
+
+    function updateVolume() {
+        const volume = Number(playerVolume.value);
+
+        audioPlayer.volume = Math.min(1, Math.max(0, volume));
+        audioPlayer.muted = audioPlayer.volume === 0;
+        syncVolumeControl();
+    }
+
+    function toggleMute() {
+        audioPlayer.muted = !audioPlayer.muted;
+        syncVolumeControl();
+    }
+
     function getCurrentTrack() {
         if (!currentlyPlayingId) {
             return null;
@@ -100,7 +201,14 @@
             return String(value);
         }
 
-        return date.toLocaleString();
+        return new Intl.DateTimeFormat("en-US", {
+            year: "2-digit",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+        }).format(date);
     }
 
     function getQualityText(track) {
@@ -108,8 +216,8 @@
             ? `${track.requested_audio_quality} kbps requested`
             : "Request unknown";
         const actualQuality = track.audio_quality
-            ? `${track.audio_quality} kbps actual`
-            : "Actual unknown";
+            ? `${track.audio_quality} kbps current`
+            : "Current unknown";
 
         return `${requestedQuality} / ${actualQuality}`;
     }
@@ -118,11 +226,53 @@
         const audioStatus = track.audio_file_exists ? "audio ok" : "audio missing";
         const thumbnailStatus = track.thumbnail_file_exists ? "thumbnail ok" : "thumbnail missing";
 
-        return `${audioStatus}, ${thumbnailStatus}`;
+        if (audioStatus && thumbnailStatus) {
+            return "all files ok"
+        }
+        else {
+            return `${audioStatus}, ${thumbnailStatus}`;
+        }
     }
 
     function setMetadataStatus(message, status) {
         setStatus(metadataStatus, message, status);
+    }
+
+    function setMetadataExpanded(isExpanded) {
+        metadataDetails.hidden = !isExpanded;
+        metadataPanel.classList.toggle("is-collapsed", !isExpanded);
+        metadataPanel.classList.toggle("is-expanded", isExpanded);
+        metadataToggleButton.setAttribute("aria-expanded", String(isExpanded));
+        metadataToggleButton.textContent = isExpanded ? "Hide Metadata" : "Show Metadata";
+    }
+
+    function toggleMetadataDetails() {
+        setMetadataExpanded(metadataDetails.hidden);
+    }
+
+    function setDescriptionExpanded(isExpanded) {
+        metadataDescriptionShell.classList.toggle("is-description-collapsed", !isExpanded);
+        metadataDescription.classList.toggle("is-description-collapsed", !isExpanded);
+        metadataDescriptionToggle.setAttribute("aria-expanded", String(isExpanded));
+        metadataDescriptionToggle.textContent = isExpanded ? "show less" : "show more";
+
+        if (!isExpanded) {
+            metadataDescription.scrollTop = 0;
+        }
+    }
+
+    function syncDescriptionToggle() {
+        const isExpanded = !metadataDescription.classList.contains("is-description-collapsed");
+        const descriptionHasOverflow = metadataDescription.scrollHeight > metadataDescription.clientHeight + 1;
+
+        metadataDescriptionToggle.hidden = !isExpanded && !descriptionHasOverflow;
+    }
+
+    function toggleDescription() {
+        const isCollapsed = metadataDescription.classList.contains("is-description-collapsed");
+
+        setDescriptionExpanded(isCollapsed);
+        syncDescriptionToggle();
     }
 
     function renderTrackMetadata(track) {
@@ -132,10 +282,11 @@
             metadataDuration.textContent = "-";
             metadataCreated.textContent = "-";
             metadataRefreshed.textContent = "-";
-            metadataQuality.textContent = "-";
             metadataBitrate.textContent = "-";
             metadataFiles.textContent = "-";
             metadataDescription.textContent = "";
+            setDescriptionExpanded(false);
+            metadataDescriptionToggle.hidden = true;
             return;
         }
 
@@ -144,12 +295,11 @@
         metadataDuration.textContent = durationToReadable(track.duration) || "Unknown";
         metadataCreated.textContent = formatDateTime(track.created_at);
         metadataRefreshed.textContent = formatDateTime(track.metadata_refreshed_at);
-        metadataQuality.textContent = getQualityText(track);
-        metadataBitrate.textContent = track.audio_bitrate
-            ? `${track.audio_bitrate} kbps`
-            : "Unknown";
-        metadataFiles.textContent = getFileStatusText(track);
+        metadataBitrate.textContent = getQualityText(track);
+        metadataFiles.textContent = capitalize(getFileStatusText(track));
         metadataDescription.textContent = track.description || "No description saved.";
+        setDescriptionExpanded(false);
+        requestAnimationFrame(syncDescriptionToggle);
     }
 
     function rebuildQueue() {
@@ -260,7 +410,11 @@
         renderTrackMetadata(track);
         updateMediaSession(track);
         updateActiveCard();
-        audioPlayer.play();
+        syncSeekControl();
+        audioPlayer.play().catch(error => {
+            console.warn("Failed to start playback", error);
+            syncPlayPauseButton();
+        });
     }
 
     function playNextTrack() {
@@ -302,13 +456,32 @@
 
     function toggleShuffle() {
         isShuffled = !isShuffled;
-        shuffleBtn.textContent = isShuffled ? "Unshuffle" : "Shuffle";
+        shuffleBtn.classList.toggle("active", isShuffled);
+        shuffleBtn.setAttribute("aria-pressed", String(isShuffled));
+        shuffleBtn.title = isShuffled ? "Shuffle on" : "Shuffle";
 
         if (isShuffled) {
             shuffledTrackIds = [];
         }
 
         renderTracks();
+    }
+
+    function playPauseTrack() {
+        if (!audioPlayer.src) {
+            playNextTrack();
+            return;
+        }
+
+        if (!audioPlayer.paused) {
+            audioPlayer.pause();
+            return;
+        }
+
+        audioPlayer.play().catch(error => {
+            console.warn("Failed to resume playback", error);
+            playNextTrack();
+        });
     }
 
     function updateMediaSession(track) {
