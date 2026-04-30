@@ -3,6 +3,11 @@
     const libraryState = createTrackLibraryState();
     let queue = [];
     let shuffledTrackIds = [];
+    let manualQueueIds = [];
+    let playlists = [];
+    const activePlaylistIds = new Set();
+    const playlistTrackIdsByPlaylist = new Map();
+    let activePlaylistTrackIds = null;
     let currentIndex = 0;
     let currentlyPlayingId = null;
     let isShuffled = false;
@@ -21,10 +26,13 @@
     const volumeButton = document.getElementById("volume-button");
     const playerVolume = document.getElementById("player-volume");
     const trackList = document.getElementById("track-list");
+    const playerPlaylistList = document.getElementById("player-playlist-list");
+    const playlistActionStatus = document.getElementById("playlist-action-status");
     const metadataPanel = document.getElementById("track-metadata-panel");
     const metadataToggleButton = document.getElementById("metadata-toggle-button");
     const metadataDetails = document.getElementById("metadata-details");
     const refreshMetadataButton = document.getElementById("refresh-metadata-button");
+    const metadataSourceLink = document.getElementById("metadata-source-link");
     const metadataStatus = document.getElementById("metadata-status");
     const metadataDuration = document.getElementById("metadata-duration");
     const metadataCreated = document.getElementById("metadata-created");
@@ -34,7 +42,9 @@
     const metadataDescriptionShell = document.getElementById("metadata-description-shell");
     const metadataDescription = document.getElementById("metadata-description");
     const metadataDescriptionToggle = document.getElementById("metadata-description-toggle");
-    const { resultsSummary } = bindTrackLibraryControls(libraryState, renderTracks);
+    const { resultsSummary, sortSelect } = bindTrackLibraryControls(libraryState, renderTracks);
+    let draggedTrackId = null;
+    let didDragTrack = false;
 
     shuffleBtn.addEventListener("click", toggleShuffle);
     previousTrackBtn.addEventListener("click", playPreviousTrack);
@@ -187,6 +197,38 @@
         return tracks.find(track => track.youtube_id === currentlyPlayingId) || null;
     }
 
+    function getQueueStorageKey() {
+        const playlistKey = [...activePlaylistIds].sort().join("-") || "all";
+        return `audioio.queue.${playlistKey}`;
+    }
+
+    function loadManualQueueOrder() {
+        try {
+            const storedIds = JSON.parse(localStorage.getItem(getQueueStorageKey()) || "[]");
+            manualQueueIds = Array.isArray(storedIds)
+                ? storedIds.map(id => String(id)).filter(Boolean)
+                : [];
+        } catch {
+            manualQueueIds = [];
+        }
+    }
+
+    function saveManualQueueOrder() {
+        localStorage.setItem(getQueueStorageKey(), JSON.stringify(manualQueueIds));
+    }
+
+    function setQueueSort(sortBy) {
+        libraryState.sortBy = sortBy;
+
+        if (sortSelect) {
+            sortSelect.value = sortBy;
+        }
+    }
+
+    function setPlaylistStatus(message, status) {
+        setStatus(playlistActionStatus, message, status);
+    }
+
     function formatDateTime(value) {
         if (!value) {
             return "Not recorded";
@@ -226,12 +268,21 @@
         const audioStatus = track.audio_file_exists ? "audio ok" : "audio missing";
         const thumbnailStatus = track.thumbnail_file_exists ? "thumbnail ok" : "thumbnail missing";
 
-        if (audioStatus && thumbnailStatus) {
-            return "all files ok"
+        if (track.audio_file_exists && track.thumbnail_file_exists) {
+            return "all files ok";
         }
-        else {
-            return `${audioStatus}, ${thumbnailStatus}`;
+
+        return `${audioStatus}, ${thumbnailStatus}`;
+    }
+
+    function getSourceVideoUrl(track) {
+        const id = String(track?.youtube_id || "").trim();
+
+        if (!id) {
+            return "";
         }
+
+        return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
     }
 
     function setMetadataStatus(message, status) {
@@ -284,6 +335,8 @@
             metadataRefreshed.textContent = "-";
             metadataBitrate.textContent = "-";
             metadataFiles.textContent = "-";
+            metadataSourceLink.href = "#";
+            metadataSourceLink.hidden = true;
             metadataDescription.textContent = "";
             setDescriptionExpanded(false);
             metadataDescriptionToggle.hidden = true;
@@ -297,16 +350,45 @@
         metadataRefreshed.textContent = formatDateTime(track.metadata_refreshed_at);
         metadataBitrate.textContent = getQualityText(track);
         metadataFiles.textContent = capitalize(getFileStatusText(track));
+        const sourceVideoUrl = getSourceVideoUrl(track);
+        metadataSourceLink.href = sourceVideoUrl || "#";
+        metadataSourceLink.hidden = !sourceVideoUrl;
         metadataDescription.textContent = track.description || "No description saved.";
         setDescriptionExpanded(false);
         requestAnimationFrame(syncDescriptionToggle);
     }
 
+    function getActivePlaylistTracks() {
+        if (!activePlaylistTrackIds) {
+            return tracks;
+        }
+
+        return tracks.filter(track => activePlaylistTrackIds.has(track.youtube_id));
+    }
+
+    function applyManualQueueOrder(visibleTracks) {
+        if (libraryState.sortBy !== "custom") {
+            return visibleTracks;
+        }
+
+        const trackMap = new Map(visibleTracks.map(track => [track.youtube_id, track]));
+        const visibleIds = visibleTracks.map(track => track.youtube_id);
+        const orderedIds = manualQueueIds.filter(id => trackMap.has(id));
+        const missingIds = visibleIds.filter(id => !orderedIds.includes(id));
+
+        manualQueueIds = [...orderedIds, ...missingIds];
+
+        return manualQueueIds
+            .map(id => trackMap.get(id))
+            .filter(Boolean);
+    }
+
     function rebuildQueue() {
-        const visibleTracks = getVisibleTracks(tracks, libraryState);
+        const playlistTracks = getActivePlaylistTracks();
+        const visibleTracks = getVisibleTracks(playlistTracks, libraryState);
 
         if (!isShuffled) {
-            queue = visibleTracks;
+            queue = applyManualQueueOrder(visibleTracks);
             shuffledTrackIds = [];
             syncCurrentIndexToQueue();
             return;
@@ -331,6 +413,36 @@
             .filter(Boolean);
 
         syncCurrentIndexToQueue();
+    }
+
+    function moveQueueTrack(draggedId, targetId) {
+        if (isShuffled) {
+            isShuffled = false;
+            shuffleBtn.classList.remove("active");
+            shuffleBtn.setAttribute("aria-pressed", "false");
+            shuffleBtn.title = "Shuffle";
+        }
+
+        manualQueueIds = queue.map(track => track.youtube_id);
+        const fromIndex = manualQueueIds.indexOf(draggedId);
+        const toIndex = manualQueueIds.indexOf(targetId);
+
+        if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
+            return;
+        }
+
+        const [movedId] = manualQueueIds.splice(fromIndex, 1);
+        manualQueueIds.splice(toIndex, 0, movedId);
+        setQueueSort("custom");
+        saveManualQueueOrder();
+        renderTracks();
+    }
+
+    function clearDragState() {
+        document.querySelectorAll(".audio-card.is-drag-over, .audio-card.is-dragging").forEach(card => {
+            card.classList.remove("is-drag-over", "is-dragging");
+        });
+        draggedTrackId = null;
     }
 
     function syncCurrentIndexToQueue() {
@@ -362,10 +474,93 @@
         }
     }
 
+    async function loadPlaylists() {
+        playlists = await fetchPlaylists();
+        renderPlaylistFilters();
+    }
+
+    function renderPlaylistFilters() {
+        playerPlaylistList.innerHTML = "";
+
+        const allButton = document.createElement("button");
+        allButton.className = "btn playlist-list-button";
+        allButton.type = "button";
+        allButton.textContent = "All Tracks";
+        allButton.classList.toggle("active", activePlaylistIds.size === 0);
+        allButton.addEventListener("click", async () => {
+            activePlaylistIds.clear();
+            activePlaylistTrackIds = null;
+            renderPlaylistFilters();
+            loadManualQueueOrder();
+            setPlaylistStatus("Showing all tracks.");
+            renderTracks();
+        });
+        playerPlaylistList.appendChild(allButton);
+
+        for (const playlist of playlists) {
+            const playlistId = String(playlist.id);
+            const button = document.createElement("button");
+            button.className = "btn playlist-list-button";
+            button.type = "button";
+            button.textContent = `${playlist.name} (${playlist.track_count || 0})`;
+            button.classList.toggle("active", activePlaylistIds.has(playlistId));
+            button.addEventListener("click", () => togglePlaylistFilter(playlistId));
+            playerPlaylistList.appendChild(button);
+        }
+    }
+
+    async function togglePlaylistFilter(playlistId) {
+        if (activePlaylistIds.has(playlistId)) {
+            activePlaylistIds.delete(playlistId);
+        } else {
+            activePlaylistIds.add(playlistId);
+        }
+
+        loadManualQueueOrder();
+
+        if (activePlaylistIds.size === 0) {
+            activePlaylistTrackIds = null;
+            renderPlaylistFilters();
+            setPlaylistStatus("Showing all tracks.");
+            renderTracks();
+            return;
+        }
+
+        try {
+            await loadSelectedPlaylistTracks();
+            renderPlaylistFilters();
+            setPlaylistStatus(`Showing ${activePlaylistIds.size} playlist${activePlaylistIds.size === 1 ? "" : "s"}.`);
+            renderTracks();
+        } catch (error) {
+            console.error("Failed to load playlists:", error);
+            setPlaylistStatus(error.message || "Failed to load playlists.", "error");
+        }
+    }
+
+    async function loadSelectedPlaylistTracks() {
+        const combinedIds = new Set();
+
+        for (const playlistId of activePlaylistIds) {
+            if (!playlistTrackIdsByPlaylist.has(playlistId)) {
+                const result = await fetchPlaylist(playlistId);
+                playlistTrackIdsByPlaylist.set(
+                    playlistId,
+                    new Set((result.tracks || []).map(track => track.youtube_id))
+                );
+            }
+
+            for (const trackId of playlistTrackIdsByPlaylist.get(playlistId)) {
+                combinedIds.add(trackId);
+            }
+        }
+
+        activePlaylistTrackIds = combinedIds;
+    }
+
     function renderTracks() {
         rebuildQueue();
         trackList.innerHTML = "";
-        updateTrackResultsSummary(resultsSummary, queue.length, tracks.length);
+        updateTrackResultsSummary(resultsSummary, queue.length, getActivePlaylistTracks().length);
 
         if (tracks.length === 0) {
             trackList.innerHTML = "<p>No tracks archived yet.</p>";
@@ -380,9 +575,49 @@
         }
 
         for (const track of queue) {
-            const card = createTrackCard(track);
+            const card = createTrackCard(track, { draggable: true });
+
+            card.addEventListener("dragstart", (event) => {
+                draggedTrackId = track.youtube_id;
+                didDragTrack = false;
+                card.classList.add("is-dragging");
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", track.youtube_id);
+            });
+
+            card.addEventListener("dragover", (event) => {
+                if (!draggedTrackId || draggedTrackId === track.youtube_id) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                card.classList.add("is-drag-over");
+            });
+
+            card.addEventListener("dragleave", () => {
+                card.classList.remove("is-drag-over");
+            });
+
+            card.addEventListener("drop", (event) => {
+                event.preventDefault();
+                didDragTrack = true;
+                const droppedId = event.dataTransfer.getData("text/plain") || draggedTrackId;
+                moveQueueTrack(droppedId, track.youtube_id);
+                clearDragState();
+                setTimeout(() => {
+                    didDragTrack = false;
+                }, 0);
+            });
+
+            card.addEventListener("dragend", clearDragState);
 
             card.addEventListener("click", () => {
+                if (didDragTrack) {
+                    didDragTrack = false;
+                    return;
+                }
+
                 playTrack(track);
             });
 
@@ -559,5 +794,15 @@
         }
     }
 
-    loadTracks();
+    async function startPlayer() {
+        loadManualQueueOrder();
+
+        try {
+            await Promise.all([loadTracks(), loadPlaylists()]);
+        } catch (error) {
+            console.error("Failed to start player:", error);
+        }
+    }
+
+    startPlayer();
 })();

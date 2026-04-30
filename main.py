@@ -3,8 +3,10 @@ import atexit
 import faulthandler
 import logging
 import signal
+import sqlite3
 import sys
 import threading
+from datetime import datetime
 import database
 import downloader
 import settings as settings_helper
@@ -131,6 +133,27 @@ def enrich_audio_record(track):
         "thumbnail_file_exists": thumbnail_file is not None,
     }
 
+def get_request_youtube_ids():
+    data = request.get_json(silent=True) or {}
+    youtube_ids = data.get("youtube_ids")
+
+    if not isinstance(youtube_ids, list) or not youtube_ids:
+        return None
+
+    cleaned_ids = []
+    seen_ids = set()
+
+    for youtube_id in youtube_ids:
+        clean_id = str(youtube_id or "").strip()
+
+        if not clean_id or clean_id in seen_ids:
+            continue
+
+        cleaned_ids.append(clean_id)
+        seen_ids.add(clean_id)
+
+    return cleaned_ids or None
+
 # Flask Endpoints ------------------------------------
 
 @app.route("/")
@@ -139,6 +162,9 @@ def player_page():
 @app.route("/downloads")
 def downloads_page():
     return render_template("downloads.html", active_page="downloads")
+@app.route("/playlists")
+def playlists_page():
+    return render_template("playlists.html", active_page="playlists")
 @app.route("/settings")
 def settings_page():
     return render_template("settings.html", active_page="settings")
@@ -203,10 +229,222 @@ def upload_cookies():
         "path": str(COOKIE_PATH)
     }), 200
 
+@app.route("/api/auth/cookies")
+def cookie_status():
+    exists = COOKIE_PATH.exists()
+    stat = COOKIE_PATH.stat() if exists else None
+
+    return jsonify({
+        "ok": True,
+        "exists": exists,
+        "filename": COOKIE_PATH.name,
+        "size_bytes": stat.st_size if stat else 0,
+        "updated_at": (
+            datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds")
+            if stat else None
+        ),
+    }), 200
+
 @app.route("/api/audios")
 def api_audios():
     audios = database.get_all_audio()
     return jsonify([enrich_audio_record(track) for track in audios])
+
+@app.route("/api/audios/bulk-delete", methods=["POST"])
+def bulk_delete_audio():
+    youtube_ids = get_request_youtube_ids()
+
+    if youtube_ids is None:
+        return jsonify({"ok": False, "error": "Choose at least one track"}), 400
+
+    deleted_tracks = []
+    missing_ids = []
+
+    for youtube_id in youtube_ids:
+        clean_id = str(youtube_id or "").strip()
+
+        if not clean_id:
+            continue
+
+        track = database.get_audio_record(clean_id)
+
+        if not track:
+            missing_ids.append(clean_id)
+            continue
+
+        if database.delete_audio(clean_id):
+            deleted_tracks.append(track)
+
+            with downloader.download_status_lock:
+                downloader.download_status.pop(clean_id, None)
+
+    return jsonify({
+        "ok": True,
+        "deleted": [track["youtube_id"] for track in deleted_tracks],
+        "tracks": deleted_tracks,
+        "missing": missing_ids,
+    }), 200
+
+@app.route("/api/audios/bulk-refresh-metadata", methods=["POST"])
+def bulk_refresh_audio_metadata():
+    youtube_ids = get_request_youtube_ids()
+
+    if youtube_ids is None:
+        return jsonify({"ok": False, "error": "Choose at least one track"}), 400
+
+    refreshed_tracks = []
+    missing_ids = []
+    failed = []
+
+    for youtube_id in youtube_ids:
+        if not database.get_audio_record(youtube_id):
+            missing_ids.append(youtube_id)
+            continue
+
+        try:
+            refreshed = downloader.refresh_track_metadata(youtube_id)
+        except Exception as error:
+            app.logger.exception("Failed to refresh metadata for %s", youtube_id)
+            failed.append({
+                "youtube_id": youtube_id,
+                "error": downloader.clean_download_error(error),
+            })
+            continue
+
+        if refreshed:
+            refreshed_tracks.append(enrich_audio_record(refreshed))
+        else:
+            missing_ids.append(youtube_id)
+
+    return jsonify({
+        "ok": True,
+        "refreshed": refreshed_tracks,
+        "missing": missing_ids,
+        "failed": failed,
+    }), 200
+
+@app.route("/api/audios/bulk-redownload", methods=["POST"])
+def bulk_redownload_audio():
+    youtube_ids = get_request_youtube_ids()
+
+    if youtube_ids is None:
+        return jsonify({"ok": False, "error": "Choose at least one track"}), 400
+
+    result = downloader.redownload_tracks(youtube_ids)
+
+    return jsonify({
+        "ok": True,
+        **result,
+    }), 202
+
+@app.route("/api/playlists")
+def api_playlists():
+    return jsonify(database.get_all_playlists())
+
+@app.route("/api/playlists", methods=["POST"])
+def create_playlist():
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name", "")).strip()
+
+    if not name:
+        return jsonify({"ok": False, "error": "Playlist name is required"}), 400
+
+    try:
+        playlist = database.create_playlist(name)
+    except sqlite3.IntegrityError:
+        return jsonify({"ok": False, "error": "A playlist with that name already exists"}), 409
+
+    if not playlist:
+        return jsonify({"ok": False, "error": "Playlist name is required"}), 400
+
+    return jsonify({"ok": True, "playlist": playlist}), 201
+
+@app.route("/api/playlists/<int:playlist_id>")
+def api_playlist(playlist_id):
+    playlist = database.get_playlist(playlist_id)
+
+    if not playlist:
+        return jsonify({"ok": False, "error": "Playlist not found"}), 404
+
+    tracks = database.get_playlist_tracks(playlist_id)
+
+    return jsonify({
+        "ok": True,
+        "playlist": playlist,
+        "tracks": [enrich_audio_record(track) for track in tracks],
+    }), 200
+
+@app.route("/api/playlists/<int:playlist_id>", methods=["PATCH"])
+def update_playlist(playlist_id):
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name", "")).strip()
+
+    if not name:
+        return jsonify({"ok": False, "error": "Playlist name is required"}), 400
+
+    try:
+        playlist = database.rename_playlist(playlist_id, name)
+    except sqlite3.IntegrityError:
+        return jsonify({"ok": False, "error": "A playlist with that name already exists"}), 409
+
+    if not playlist:
+        return jsonify({"ok": False, "error": "Playlist not found"}), 404
+
+    return jsonify({"ok": True, "playlist": playlist}), 200
+
+@app.route("/api/playlists/<int:playlist_id>", methods=["DELETE"])
+def delete_playlist(playlist_id):
+    playlist = database.get_playlist(playlist_id)
+
+    if not playlist:
+        return jsonify({"ok": False, "error": "Playlist not found"}), 404
+
+    youtube_ids = database.get_playlist_track_ids(playlist_id)
+
+    if not database.delete_playlist(playlist_id):
+        return jsonify({"ok": False, "error": "Playlist not found"}), 404
+
+    return jsonify({
+        "ok": True,
+        "deleted": playlist_id,
+        "playlist": playlist,
+        "youtube_ids": youtube_ids,
+    }), 200
+
+@app.route("/api/playlists/<int:playlist_id>/tracks", methods=["POST"])
+def add_playlist_tracks(playlist_id):
+    data = request.get_json(silent=True) or {}
+    youtube_ids = data.get("youtube_ids")
+
+    if not isinstance(youtube_ids, list) or not youtube_ids:
+        return jsonify({"ok": False, "error": "Choose at least one track"}), 400
+
+    added_count = database.add_tracks_to_playlist(playlist_id, youtube_ids)
+
+    if added_count is None:
+        return jsonify({"ok": False, "error": "Playlist not found"}), 404
+
+    playlist = database.get_playlist(playlist_id)
+
+    return jsonify({
+        "ok": True,
+        "added": added_count,
+        "playlist": playlist,
+    }), 200
+
+@app.route("/api/playlists/<int:playlist_id>/tracks/<youtube_id>", methods=["DELETE"])
+def remove_playlist_track(playlist_id, youtube_id):
+    if not database.remove_track_from_playlist(playlist_id, youtube_id):
+        return jsonify({"ok": False, "error": "Playlist track not found"}), 404
+
+    playlist = database.get_playlist(playlist_id)
+
+    return jsonify({
+        "ok": True,
+        "removed": youtube_id,
+        "playlist": playlist,
+    }), 200
+
 @app.route("/audio/<filename>")
 def audio(filename):
     return send_from_directory(AUDIO_DIR, filename)

@@ -15,6 +15,25 @@
 
 {% set track_library_heading = "Existing Tracks" %}
 {% set track_library_search_placeholder = "Search imported tracks..." %}
+
+<section class="bulk-actions" aria-label="Bulk track actions">
+    <p id="bulk-selection-summary" class="bulk-selection-summary">
+        No tracks selected
+    </p>
+    <button id="bulk-select-visible-button" class="btn" type="button">
+        Select Visible
+    </button>
+    <button id="bulk-delete-button" class="btn" type="button">
+        Delete Selected
+    </button>
+    <button id="bulk-refresh-metadata-button" class="btn" type="button">
+        Refresh Metadata
+    </button>
+    <button id="bulk-redownload-button" class="btn" type="button">
+        Re-download
+    </button>
+</section>
+
 {% include "partials/track_library.html" %}
 {% endblock %}
 

@@ -201,6 +201,7 @@ class DownloadJob:
     title: str = "Unknown"
     uploader: str = "Unknown"
     force_redownload: bool = False
+    playlist_id: int | None = None
 
     @classmethod
     def from_info_dict(cls, info, track_url, force_redownload=False):
@@ -240,6 +241,7 @@ class DownloadJob:
             title=item.get("title", "Unknown"),
             uploader=item.get("uploader", "Unknown"),
             force_redownload=item.get("force_redownload", force_redownload),
+            playlist_id=item.get("playlist_id"),
         )
 
 
@@ -952,6 +954,9 @@ def run_batch_worker():
                         update_download_batch(current_batch_id, failed_delta=1)
                         continue
 
+                    if job.playlist_id:
+                        database.add_tracks_to_playlist(job.playlist_id, [job.track_id])
+
                     update_download_batch(
                         current_batch_id,
                         completed_delta=1,
@@ -1151,6 +1156,10 @@ def extract_playlist(track_url):
             uploader=playlist_info.get("uploader", ""), # type: ignore
         )
 
+    playlist_title = playlist_info.get("title") or "Imported Playlist"
+    playlist = database.get_or_create_playlist(playlist_title)
+    playlist_id = playlist["id"] if playlist else None
+
     for entry in entries:
         track_id = entry.get("id")
 
@@ -1160,16 +1169,21 @@ def extract_playlist(track_url):
         track_url = youtube_watch_url(track_id)
         track_state = get_track_state(track_id)
 
+        if playlist_id and track_state.db_exists:
+            database.add_tracks_to_playlist(playlist_id, [track_id])
+
         if track_state.complete or is_download_busy(track_id):
             continue
 
-        download_queue[track_id] = DownloadJob.from_info_dict(entry, track_url)
+        job = DownloadJob.from_info_dict(entry, track_url)
+        job.playlist_id = playlist_id
+        download_queue[track_id] = job
 
-    queued_count = batch_download(download_queue, playlist_info.get("title") or "Imported Playlist")
+    queued_count = batch_download(download_queue, playlist_title)
 
     return ImportResult(
         queued_count=queued_count,
-        title=playlist_info.get("title") or "Imported Playlist",
+        title=playlist_title,
         uploader="",
     )
 
@@ -1230,3 +1244,49 @@ def redownload_all_for_quality() -> None:
         )
 
     batch_download(download_queue, "Playlist Redownload for Quality Change", force_redownload=True)
+
+def redownload_tracks(youtube_ids) -> dict:
+    cleaned_ids = []
+    seen_ids = set()
+
+    for youtube_id in youtube_ids:
+        clean_id = str(youtube_id or "").strip()
+
+        if not clean_id or clean_id in seen_ids:
+            continue
+
+        cleaned_ids.append(clean_id)
+        seen_ids.add(clean_id)
+
+    download_queue = {}
+    missing_ids = []
+    skipped_ids = []
+
+    for youtube_id in cleaned_ids:
+        row = database.get_audio_record(youtube_id)
+
+        if not row:
+            missing_ids.append(youtube_id)
+            continue
+
+        if is_download_busy(youtube_id):
+            skipped_ids.append(youtube_id)
+            continue
+
+        download_queue[youtube_id] = DownloadJob.from_db_row(
+            row,
+            force_redownload=True,
+        )
+
+    queued_count = batch_download(
+        download_queue,
+        "Bulk Re-download",
+        force_redownload=True
+    )
+
+    return {
+        "queued": list(download_queue.keys()),
+        "queued_count": queued_count,
+        "missing": missing_ids,
+        "skipped": skipped_ids,
+    }

@@ -34,3 +34,37 @@ function uiAddToast(toast, options = {}) {
     container.appendChild(toast);
     return toast;
 }
+
+function uiShowToast(message, options = {}) {
+    const toast = document.createElement("div");
+    toast.className = "undo-toast";
+
+    if (options.status) {
+        toast.classList.add(options.status);
+    }
+
+    const text = document.createElement("p");
+    text.className = "undo-toast-message";
+    text.textContent = message;
+
+    const closeButton = document.createElement("button");
+    closeButton.className = "undo-toast-close";
+    closeButton.type = "button";
+    closeButton.textContent = "x";
+    closeButton.setAttribute("aria-label", "Dismiss message");
+
+    toast.append(text, closeButton);
+    uiAddToast(toast, { maxToasts: options.maxToasts ?? 3 });
+
+    const timeoutId = setTimeout(
+        () => uiRemoveToast(toast),
+        options.timeoutMs ?? 6000
+    );
+
+    closeButton.addEventListener("click", () => {
+        clearTimeout(timeoutId);
+        uiRemoveToast(toast);
+    });
+
+    return toast;
+}

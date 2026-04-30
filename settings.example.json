@@ -71,6 +71,11 @@
         "accept": ".txt",
         "filename": "cookies.txt"
       },
+      "status": {
+        "action": "/api/auth/cookies",
+        "available_label": "cookies.txt is ready.",
+        "missing_label": "No cookies.txt uploaded."
+      },
       "return": true
     }
   }

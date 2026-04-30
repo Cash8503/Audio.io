@@ -1,29 +1,25 @@
 function createTrackLibraryState() {
     return {
         search: "",
-        sortBy: "title-asc",
-        durationFilter: "all"
+        sortBy: "title-asc"
     };
 }
 
 function bindTrackLibraryControls(state, onChange) {
     const searchInput = document.getElementById("track-search-input");
     const sortSelect = document.getElementById("track-sort-select");
-    const filterSelect = document.getElementById("track-filter-select");
     const resultsSummary = document.getElementById("track-results-summary");
 
-    if (!searchInput || !sortSelect || !filterSelect) {
+    if (!searchInput || !sortSelect) {
         return {
             searchInput,
             sortSelect,
-            filterSelect,
             resultsSummary
         };
     }
 
     searchInput.value = state.search;
     sortSelect.value = state.sortBy;
-    filterSelect.value = state.durationFilter;
 
     searchInput.addEventListener("input", (event) => {
         state.search = event.target.value;
@@ -35,23 +31,16 @@ function bindTrackLibraryControls(state, onChange) {
         onChange();
     });
 
-    filterSelect.addEventListener("change", (event) => {
-        state.durationFilter = event.target.value;
-        onChange();
-    });
-
     return {
         searchInput,
         sortSelect,
-        filterSelect,
         resultsSummary
     };
 }
 
 function getVisibleTracks(tracks, state) {
     const filteredTracks = tracks.filter(track =>
-        trackMatchesSearch(track, state.search) &&
-        trackMatchesDurationFilter(track, state.durationFilter)
+        trackMatchesSearch(track, state.search)
     );
 
     return sortTracks(filteredTracks, state.sortBy);
@@ -86,25 +75,11 @@ function trackMatchesSearch(track, search) {
     return title.includes(query) || uploader.includes(query);
 }
 
-function trackMatchesDurationFilter(track, durationFilter) {
-    const duration = Number(track.duration) || 0;
-
-    if (durationFilter === "short") {
-        return duration > 0 && duration < 300;
-    }
-
-    if (durationFilter === "medium") {
-        return duration >= 300 && duration <= 1200;
-    }
-
-    if (durationFilter === "long") {
-        return duration > 1200;
-    }
-
-    return true;
-}
-
 function sortTracks(tracks, sortBy) {
+    if (sortBy === "custom") {
+        return [...tracks];
+    }
+
     const sortedTracks = [...tracks];
 
     sortedTracks.sort((a, b) => {
@@ -113,7 +88,15 @@ function sortTracks(tracks, sortBy) {
         }
 
         if (sortBy === "duration-asc" || sortBy === "duration-desc") {
-            return (Number(a.duration) || 0) - (Number(b.duration) || 0);
+            return parseDurationSeconds(a.duration) - parseDurationSeconds(b.duration);
+        }
+
+        if (sortBy === "quality-asc" || sortBy === "quality-desc") {
+            return getTrackQuality(a) - getTrackQuality(b);
+        }
+
+        if (sortBy === "imported-asc" || sortBy === "imported-desc") {
+            return getTrackImportedTime(a) - getTrackImportedTime(b);
         }
 
         return compareText(a.title, b.title);
@@ -124,6 +107,25 @@ function sortTracks(tracks, sortBy) {
     }
 
     return sortedTracks;
+}
+
+function getTrackQuality(track) {
+    return Number(track.audio_bitrate || track.audio_quality || track.requested_audio_quality) || 0;
+}
+
+function getTrackImportedTime(track) {
+    const value = track.created_at;
+
+    if (!value) {
+        return 0;
+    }
+
+    const normalizedValue = String(value).includes("T")
+        ? String(value)
+        : String(value).replace(" ", "T");
+    const time = new Date(normalizedValue).getTime();
+
+    return Number.isNaN(time) ? 0 : time;
 }
 
 function compareText(a, b) {

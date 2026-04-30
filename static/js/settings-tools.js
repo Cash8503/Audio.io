@@ -108,6 +108,85 @@ function formatToolResponse(result) {
     return String(result || "Done.");
 }
 
+function formatFileSize(bytes) {
+    const value = Number(bytes) || 0;
+
+    if (value < 1024) {
+        return `${value} B`;
+    }
+
+    if (value < 1024 * 1024) {
+        return `${Math.round(value / 1024)} KB`;
+    }
+
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatToolStatusDate(value) {
+    if (!value) return "";
+
+    const normalizedValue = String(value).includes("T")
+        ? value
+        : String(value).replace(" ", "T");
+    const date = new Date(normalizedValue);
+
+    if (Number.isNaN(date.getTime())) {
+        return "";
+    }
+
+    return date.toLocaleString([], {
+        dateStyle: "medium",
+        timeStyle: "short"
+    });
+}
+
+function formatToolStatus(result, statusConfig) {
+    if (!result || typeof result !== "object") {
+        return "Status unavailable.";
+    }
+
+    if (!result.exists) {
+        return statusConfig.missing_label || "Not configured.";
+    }
+
+    const updatedAt = formatToolStatusDate(result.updated_at);
+    const details = [
+        statusConfig.available_label || `${result.filename || "File"} is ready.`,
+        result.size_bytes ? formatFileSize(result.size_bytes) : "",
+        updatedAt ? `updated ${updatedAt}` : ""
+    ].filter(Boolean);
+
+    return details.join(" ");
+}
+
+async function refreshToolStatus(tool, statusElement) {
+    const statusConfig = tool.status;
+
+    if (!statusConfig || !statusConfig.action || !statusElement) {
+        return;
+    }
+
+    setStatus(statusElement, "Checking status...", null);
+
+    try {
+        const response = await fetch(statusConfig.action);
+        const result = await parseJsonResponse(response);
+
+        if (!response.ok) {
+            throw new Error(result.error || `Status unavailable: ${response.status}`);
+        }
+
+        setStatus(
+            statusElement,
+            formatToolStatus(result, statusConfig),
+            result.exists ? "success" : null
+        );
+    } catch (error) {
+        console.error(error);
+        setStatus(statusElement, error.message || "Status unavailable.", "error");
+    }
+}
+
 function collectToolInputBody(inputs) {
     const fileInput = inputs.find((entry) => entry.type === "file");
 
@@ -162,7 +241,7 @@ function getToolInputValue(entry) {
     return entry.input.value;
 }
 
-async function runTool(tool, inputs, button, resultElement) {
+async function runTool(tool, inputs, button, resultElement, statusElement) {
     const buttonConfig = typeof tool.button === "object" && tool.button !== null
         ? tool.button
         : { label: tool.button || tool.label, action: tool.action, method: tool.method };
@@ -205,6 +284,8 @@ async function runTool(tool, inputs, button, resultElement) {
             setStatus(resultElement, tool.successMessage || "Done.", "success");
         }
 
+        await refreshToolStatus(tool, statusElement);
+
         for (const entry of inputs) {
             if (entry.type === "file") {
                 entry.input.value = "";
@@ -243,6 +324,10 @@ function createToolPanel(toolId, tool) {
     description.className = "settings-disclaimer";
     description.textContent = tool.description || "";
 
+    const status = document.createElement("p");
+    status.className = "settings-tool-status";
+    status.role = "status";
+
     const actionRow = document.createElement("div");
     actionRow.className = "settings-action-row";
 
@@ -263,13 +348,18 @@ function createToolPanel(toolId, tool) {
     result.className = "settings-action-result";
     result.role = "status";
 
-    button.addEventListener("click", () => runTool(tool, inputs, button, result));
+    button.addEventListener("click", () => runTool(tool, inputs, button, result, status));
 
     actionRow.append(button, result);
     panel.append(heading);
 
     if (description.textContent) {
         panel.append(description);
+    }
+
+    if (tool.status?.action) {
+        panel.append(status);
+        refreshToolStatus(tool, status);
     }
 
     panel.append(actionRow);

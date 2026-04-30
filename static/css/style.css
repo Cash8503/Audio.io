@@ -324,7 +324,10 @@ main {
     margin: 0;
 }
 
-.metadata-status,
+.metadata-status {
+    text-align: center;
+    margin: 0;
+}
 .metadata-description {
     margin: 0;
     color: var(--muted);
@@ -353,6 +356,67 @@ main {
     align-items: center;
     justify-content: space-between;
     gap: var(--control-gap);
+}
+
+.metadata-action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.metadata-source-link {
+    text-decoration: none;
+}
+
+#playlist-track-list {
+    text-align: center;
+}
+.playlist-controls,
+.bulk-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--control-gap);
+    flex-wrap: wrap;
+    width: min(900px, 100%);
+    margin: 0 auto var(--section-gap);
+}
+
+.playlist-controls .metadata-status {
+    flex: 1 1 180px;
+}
+.playlists-page {
+    display: grid;
+    gap: var(--section-gap);
+    margin-bottom: var(--section-gap);
+}
+.playlist-manager-panel {
+    display: grid;
+    gap: var(--control-gap);
+}
+.playlist-create-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--control-gap);
+    flex-wrap: wrap;
+}
+.playlist-list {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--control-gap);
+    flex-wrap: wrap;
+}
+.playlist-list-button.active {
+    border-color: var(--accent);
+    background: var(--panel-hover);
+}
+.player-playlist-filter {
+    display: grid;
+    gap: var(--control-gap);
+    margin-bottom: var(--section-gap);
 }
 
 .metadata-grid {
@@ -509,6 +573,7 @@ main {
 
 .library {
     display: grid;
+    text-align: center;
     gap: var(--card-gap);
 }
 .track-library-shell {
@@ -559,6 +624,7 @@ main {
     flex-shrink: 0;
 }
 .audio-info {
+    flex: 1;
     min-width: 0;
 }
 .audio-info h2 {
@@ -641,6 +707,120 @@ main {
     margin-left: auto;
     flex-shrink: 0;
 }
+.track-select-control {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 92px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.1s ease, background 0.1s ease, color 0.1s ease;
+}
+.track-select-checkbox {
+    width: 18px;
+    height: 18px;
+    display: grid;
+    place-content: center;
+    appearance: none;
+    margin: 0;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    background: var(--panel);
+    cursor: pointer;
+    transition: border-color 0.1s ease, background 0.1s ease;
+}
+.track-select-checkbox::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: white;
+    transform: scale(0);
+    transition: transform 0.1s ease;
+}
+.track-select-checkbox:checked {
+    border-color: var(--accent);
+    background: var(--accent);
+}
+.track-select-checkbox:checked::before {
+    transform: scale(1);
+}
+.track-select-checkbox:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+.track-select-control:hover .track-select-checkbox {
+    border-color: var(--accent);
+}
+.track-select-control span {
+    line-height: 1;
+}
+.audio-card.is-selectable .track-select-control,
+.audio-card-editor.is-selectable .track-select-control {
+    flex-shrink: 0;
+}
+.audio-card.is-selectable,
+.audio-card-editor.is-selectable {
+    cursor: default;
+}
+.audio-card.is-selectable .audio-info {
+    cursor: pointer;
+}
+.audio-card.is-selectable .track-select-control {
+    cursor: pointer;
+}
+.audio-card.is-selectable:has(.track-select-checkbox:checked),
+.audio-card-editor.is-selectable:has(.track-select-checkbox:checked) {
+    border-color: var(--accent);
+    background: var(--panel-hover);
+}
+.track-select-control:has(.track-select-checkbox:checked) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.audio-card.is-draggable {
+    cursor: grab;
+}
+.audio-card.is-dragging {
+    cursor: grabbing;
+    opacity: 0.55;
+}
+.audio-card.is-drag-over {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+.queue-drag-handle {
+    color: var(--muted);
+    cursor: grab;
+    flex-shrink: 0;
+}
+.audio-card.is-dragging .queue-drag-handle {
+    cursor: grabbing;
+}
+.queue-card-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+.queue-card-controls .btn {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+}
+.bulk-selection-summary {
+    margin: 0;
+    color: var(--muted);
+    min-width: 130px;
+    text-align: center;
+}
 .download-error {
     margin: 4px 0 0 24px;
     padding-left: 12px;
@@ -679,6 +859,14 @@ main {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     box-shadow: 0 12px 28px #00000066;
+}
+
+.undo-toast.error {
+    border-color: #ff7777;
+}
+
+.undo-toast.success {
+    border-color: var(--accent);
 }
 
 .undo-toast-leaving {
@@ -918,6 +1106,18 @@ main {
 .settings-tool-input .setting-input {
     min-width: 180px;
 }
+.settings-tool-status {
+    margin: 0 0 var(--control-gap);
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.45;
+}
+.settings-tool-status.success {
+    color: var(--accent);
+}
+.settings-tool-status.error {
+    color: #ff7777;
+}
 .settings-action-result {
     margin: 0;
     color: var(--muted);
@@ -1040,7 +1240,7 @@ main {
 
     .audio-card-editor {
         display: grid;
-        grid-template-columns: 90px 1fr auto;
+        grid-template-columns: auto 90px minmax(0, 1fr);
         align-items: center;
         gap: var(--control-gap);
         padding: 14px;
@@ -1066,6 +1266,7 @@ main {
     }
 
     .audio-card-editor .delete-btn {
+        grid-column: 1 / -1;
         margin-left: 0;
         padding: 10px 12px;
         align-self: center;

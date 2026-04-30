@@ -22,6 +22,27 @@ async function fetchTracks() {
     return await response.json();
 }
 
+async function fetchPlaylists() {
+    const response = await fetch("/api/playlists");
+
+    if (!response.ok) {
+        throw new Error(`Failed to load playlists: ${response.status}`);
+    }
+
+    return await response.json();
+}
+
+async function fetchPlaylist(playlistId) {
+    const response = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}`);
+    const result = await parseJsonResponse(response);
+
+    if (!response.ok) {
+        throw new Error(result.error || `Failed to load playlist: ${response.status}`);
+    }
+
+    return result;
+}
+
 async function fetchDownloadStatus() {
     const response = await fetch("/api/downloads");
 
@@ -88,6 +109,57 @@ async function requestDeleteTrack(youtube_id) {
     return response;
 }
 
+async function requestBulkDeleteTracks(youtubeIds) {
+    const response = await fetch("/api/audios/bulk-delete", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ youtube_ids: youtubeIds })
+    });
+    const result = await parseJsonResponse(response);
+
+    if (!response.ok) {
+        throw new Error(result.error || `Failed to delete tracks: ${response.status}`);
+    }
+
+    return result;
+}
+
+async function requestBulkRefreshTrackMetadata(youtubeIds) {
+    const response = await fetch("/api/audios/bulk-refresh-metadata", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ youtube_ids: youtubeIds })
+    });
+    const result = await parseJsonResponse(response);
+
+    if (!response.ok) {
+        throw new Error(result.error || `Failed to refresh metadata: ${response.status}`);
+    }
+
+    return result;
+}
+
+async function requestBulkRedownloadTracks(youtubeIds) {
+    const response = await fetch("/api/audios/bulk-redownload", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ youtube_ids: youtubeIds })
+    });
+    const result = await parseJsonResponse(response);
+
+    if (!response.ok) {
+        throw new Error(result.error || `Failed to re-download tracks: ${response.status}`);
+    }
+
+    return result;
+}
+
 async function requestRestoreTrack(track) {
     const response = await fetch(`/api/audios/${encodeURIComponent(track.youtube_id)}/restore`, {
         method: "POST",
@@ -98,6 +170,67 @@ async function requestRestoreTrack(track) {
     });
 
     return response;
+}
+
+async function createPlaylist(name) {
+    const response = await fetch("/api/playlists", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ name })
+    });
+    const result = await parseJsonResponse(response);
+
+    if (!response.ok) {
+        throw new Error(result.error || `Failed to create playlist: ${response.status}`);
+    }
+
+    return result.playlist;
+}
+
+async function deletePlaylist(playlistId) {
+    const response = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}`, {
+        method: "DELETE"
+    });
+    const result = await parseJsonResponse(response);
+
+    if (!response.ok) {
+        throw new Error(result.error || `Failed to delete playlist: ${response.status}`);
+    }
+
+    return result;
+}
+
+async function addTracksToPlaylist(playlistId, youtubeIds) {
+    const response = await fetch(`/api/playlists/${encodeURIComponent(playlistId)}/tracks`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ youtube_ids: youtubeIds })
+    });
+    const result = await parseJsonResponse(response);
+
+    if (!response.ok) {
+        throw new Error(result.error || `Failed to add tracks: ${response.status}`);
+    }
+
+    return result;
+}
+
+async function removeTrackFromPlaylist(playlistId, youtubeId) {
+    const response = await fetch(
+        `/api/playlists/${encodeURIComponent(playlistId)}/tracks/${encodeURIComponent(youtubeId)}`,
+        { method: "DELETE" }
+    );
+    const result = await parseJsonResponse(response);
+
+    if (!response.ok) {
+        throw new Error(result.error || `Failed to remove track: ${response.status}`);
+    }
+
+    return result;
 }
 
 async function requestRefreshTrackMetadata(youtubeId) {

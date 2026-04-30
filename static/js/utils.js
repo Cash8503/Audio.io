@@ -1,5 +1,39 @@
+function parseDurationSeconds(value) {
+    if (typeof value === "number") {
+        return Number.isFinite(value) ? value : 0;
+    }
+
+    const text = String(value || "").trim();
+
+    if (!text) {
+        return 0;
+    }
+
+    if (/^\d+(\.\d+)?$/.test(text)) {
+        return Number(text);
+    }
+
+    const parts = text.split(":").map(part => Number(part.trim()));
+
+    if (
+        parts.length < 2 ||
+        parts.length > 3 ||
+        parts.some(part => !Number.isFinite(part) || part < 0)
+    ) {
+        return 0;
+    }
+
+    if (parts.length === 2) {
+        const [minutes, seconds] = parts;
+        return (minutes * 60) + seconds;
+    }
+
+    const [hours, minutes, seconds] = parts;
+    return (hours * 3600) + (minutes * 60) + seconds;
+}
+
 function durationToReadable(duration) {
-    duration = Math.floor(duration || 0);
+    duration = Math.floor(parseDurationSeconds(duration));
 
     const hours = Math.floor(duration / 3600);
     const minutes = Math.floor((duration % 3600) / 60);

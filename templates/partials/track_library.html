@@ -12,20 +12,28 @@
         />
 
         <select id="track-sort-select" class="setting-input" aria-label="Sort tracks">
+            <option value="custom">Custom</option>
             <option value="title-asc">Title A-Z</option>
             <option value="title-desc">Title Z-A</option>
             <option value="uploader-asc">Uploader A-Z</option>
             <option value="uploader-desc">Uploader Z-A</option>
-            <option value="duration-asc">Shortest First</option>
-            <option value="duration-desc">Longest First</option>
+            <option value="duration-asc">Length Shortest</option>
+            <option value="duration-desc">Length Longest</option>
+            <option value="quality-desc">Quality Highest</option>
+            <option value="quality-asc">Quality Lowest</option>
+            <option value="imported-desc">Imported Newest</option>
+            <option value="imported-asc">Imported Oldest</option>
         </select>
 
-        <select id="track-filter-select" class="setting-input" aria-label="Filter tracks by duration">
-            <option value="all">All Durations</option>
-            <option value="short">Under 5 min</option>
-            <option value="medium">5-20 min</option>
-            <option value="long">Over 20 min</option>
+        {% if track_library_show_playlist_filter %}
+        <select
+            id="playlist-select"
+            class="setting-input"
+            aria-label="Playlist"
+        >
+            <option value="">All Tracks</option>
         </select>
+        {% endif %}
     </section>
 
     <p id="track-results-summary" class="track-results-summary"></p>

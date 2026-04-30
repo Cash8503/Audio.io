@@ -37,8 +37,8 @@ Audio.io is a local Flask web app for downloading, organizing, and playing audio
 Python packages are listed in `requirements.txt`:
 
 ```text
-Flask==3.0.0
-yt-dlp==2024.4.9
+Flask==3.1.0
+yt-dlp==2026.03.17
 ```
 
 ## Setup

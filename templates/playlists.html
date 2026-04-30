@@ -1,0 +1,73 @@
+{% extends "base.html" %} {% block title %}Audio.io - Playlists{% endblock %} {%
+block content %}
+<section class="playlists-page">
+    <section class="playlist-manager-panel">
+        <div class="dividing-header">
+            <span>Playlists</span>
+        </div>
+
+        <div class="playlist-create-row">
+            <input
+                id="playlist-name-input"
+                class="setting-input"
+                type="text"
+                placeholder="New playlist name"
+            />
+            <button id="create-playlist-button" class="btn" type="button">
+                Create Playlist
+            </button>
+        </div>
+
+        <p id="playlist-status" class="metadata-status" role="status"></p>
+        <div id="playlist-list" class="playlist-list"></div>
+    </section>
+
+    <section class="playlist-manager-panel">
+        <div class="dividing-header">
+            <span id="active-playlist-heading">Choose a Playlist</span>
+        </div>
+
+        <p id="playlist-selection-summary" class="bulk-selection-summary">
+            No tracks selected
+        </p>
+
+        <section class="bulk-actions" aria-label="Playlist track actions">
+            <button
+                id="playlist-select-visible-button"
+                class="btn"
+                type="button"
+            >
+                Select Visible
+            </button>
+            <button id="playlist-add-selected-button" class="btn" type="button">
+                Add Selected
+            </button>
+            <button
+                id="playlist-remove-selected-button"
+                class="btn"
+                type="button"
+            >
+                Remove Selected
+            </button>
+            <button
+                id="delete-playlist-button"
+                class="btn"
+                type="button"
+                disabled
+            >
+                Delete Playlist
+            </button>
+        </section>
+
+        <div id="playlist-track-list" class="library"></div>
+    </section>
+</section>
+
+{% set track_library_heading = "Library" %} {% set
+track_library_search_placeholder = "Search tracks to add..." %} {% include
+"partials/track_library.html" %} {% endblock %} {% block scripts %}
+<script src="{{ url_for('static', filename='js/track-library.js') }}"></script>
+<script src="{{ url_for('static', filename='js/track-ui.js') }}"></script>
+<script src="{{ url_for('static', filename='js/toast-ui.js') }}"></script>
+<script src="{{ url_for('static', filename='js/playlists.js') }}"></script>
+{% endblock %}

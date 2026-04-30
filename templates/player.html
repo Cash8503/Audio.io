@@ -115,14 +115,30 @@ block content %}
                 <p id="metadata-status" class="metadata-status" role="status">
                     Choose a track to view details.
                 </p>
-                <button
-                    class="btn material-symbols-rounded"
-                    id="refresh-metadata-button"
-                    type="button"
-                    disabled
-                >
-                    refresh
-                </button>
+                <div class="metadata-action-buttons">
+                    <a
+                        class="btn material-symbols-rounded metadata-source-link"
+                        id="metadata-source-link"
+                        href="#"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Open source video"
+                        title="Open source video"
+                        hidden
+                    >
+                        open_in_new
+                    </a>
+                    <button
+                        class="btn material-symbols-rounded"
+                        id="refresh-metadata-button"
+                        type="button"
+                        aria-label="Refresh metadata"
+                        title="Refresh metadata"
+                        disabled
+                    >
+                        refresh
+                    </button>
+                </div>
             </div>
 
             <dl class="metadata-grid">
@@ -159,10 +175,19 @@ block content %}
         </button>
     </section>
 </section>
+
 {% set track_library_heading = "Tracks" %} {% set
-track_library_search_placeholder = "Search your library..." %} {% include
-"partials/track_library.html" %} {% endblock %} {% block scripts %}
+track_library_search_placeholder = "Search your library..." %}
+<section class="player-playlist-filter" aria-label="Playlist filters">
+    <div class="dividing-header">
+        <span>Playlists</span>
+    </div>
+    <p id="playlist-action-status" class="metadata-status" role="status"></p>
+    <div id="player-playlist-list" class="playlist-list"></div>
+</section>
+{% include "partials/track_library.html" %} {% endblock %} {% block scripts %}
 <script src="{{ url_for('static', filename='js/track-library.js') }}"></script>
 <script src="{{ url_for('static', filename='js/track-ui.js') }}"></script>
+<script src="{{ url_for('static', filename='js/toast-ui.js') }}"></script>
 <script src="{{ url_for('static', filename='js/player.js') }}"></script>
 {% endblock %}
