@@ -4,11 +4,6 @@
         <meta charset="UTF-8" />
         <title>{% block title %}Audio.io{% endblock %}</title>
         <link
-            rel="icon"
-            type="image/png"
-            href="{{ url_for('static', filename='img/favicon.png') }}"
-        />
-        <link
             rel="stylesheet"
             href="{{ url_for('static', filename='css/style.css') }}"
         />
@@ -35,6 +30,7 @@
         <script src="{{ url_for('static', filename='js/api.js') }}"></script>
         <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
         <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+        <script src="{{ url_for('static', filename='js/favicon.js') }}"></script>
         {% block scripts %}{% endblock %}
     </body>
 </html>

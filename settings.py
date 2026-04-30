@@ -42,6 +42,8 @@ def sync_settings():
             if key in RESERVED_CONFIG_KEYS or not _is_setting_definition(example_setting):
                 continue
 
+            merged[key]["default_value"] = deepcopy(example_setting.get("value"))
+
             current_setting = current.get(key)
 
             if isinstance(current_setting, dict) and "value" in current_setting:
@@ -75,7 +77,8 @@ def save_settings(updates):
                     "description": "",
                     "group": "Other",
                     "type": type(value).__name__,
-                    "value": value
+                    "value": value,
+                    "default_value": value,
                 }
 
         _write_json(SETTINGS_PATH, settings)

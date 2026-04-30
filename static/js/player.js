@@ -56,6 +56,7 @@
     metadataDescriptionToggle.addEventListener("click", toggleDescription);
     metadataToggleButton.addEventListener("click", toggleMetadataDetails);
     refreshMetadataButton.addEventListener("click", refreshCurrentTrackMetadata);
+    metadataSourceLink.addEventListener("click", openCurrentTrackSource);
     setMetadataExpanded(false);
     syncVolumeControl();
     syncSeekControl();
@@ -326,17 +327,27 @@
         syncDescriptionToggle();
     }
 
+    function openCurrentTrackSource() {
+        const sourceUrl = metadataSourceLink.dataset.sourceUrl || "";
+
+        if (!sourceUrl || metadataSourceLink.disabled) {
+            return;
+        }
+
+        window.open(sourceUrl, "_blank", "noopener,noreferrer");
+    }
+
     function renderTrackMetadata(track) {
         if (!track) {
             refreshMetadataButton.disabled = true;
+            metadataSourceLink.disabled = true;
             setMetadataStatus("Choose a track to view details.");
             metadataDuration.textContent = "-";
             metadataCreated.textContent = "-";
             metadataRefreshed.textContent = "-";
             metadataBitrate.textContent = "-";
             metadataFiles.textContent = "-";
-            metadataSourceLink.href = "#";
-            metadataSourceLink.hidden = true;
+            metadataSourceLink.dataset.sourceUrl = "";
             metadataDescription.textContent = "";
             setDescriptionExpanded(false);
             metadataDescriptionToggle.hidden = true;
@@ -344,6 +355,7 @@
         }
 
         refreshMetadataButton.disabled = false;
+        metadataSourceLink.disabled = false;
         setMetadataStatus(`Showing details for ${track.title || "selected track"}.`);
         metadataDuration.textContent = durationToReadable(track.duration) || "Unknown";
         metadataCreated.textContent = formatDateTime(track.created_at);
@@ -351,8 +363,8 @@
         metadataBitrate.textContent = getQualityText(track);
         metadataFiles.textContent = capitalize(getFileStatusText(track));
         const sourceVideoUrl = getSourceVideoUrl(track);
-        metadataSourceLink.href = sourceVideoUrl || "#";
-        metadataSourceLink.hidden = !sourceVideoUrl;
+        metadataSourceLink.dataset.sourceUrl = sourceVideoUrl || "";
+        metadataSourceLink.disabled = !sourceVideoUrl;
         metadataDescription.textContent = track.description || "No description saved.";
         setDescriptionExpanded(false);
         requestAnimationFrame(syncDescriptionToggle);

@@ -316,7 +316,7 @@ main {
 .track-metadata-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     gap: var(--control-gap);
 }
 
@@ -606,6 +606,7 @@ main {
     background: var(--panel-hover);
 }
 .audio-card {
+    text-align: left;
     display: flex;
     align-items: center;
     gap: var(--card-gap);
@@ -983,10 +984,11 @@ main {
 }
 .setting-control-group {
     display: flex;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    flex-wrap: wrap;
+    min-width: 0;
 }
 .setting-default-button {
     flex-shrink: 0;
@@ -1036,6 +1038,8 @@ main {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 .setting-color-picker {
     width: 44px;
@@ -1059,6 +1063,8 @@ main {
 }
 .setting-color-value {
     min-width: 120px;
+    width: 140px;
+    max-width: 100%;
     font-family: Consolas, "Courier New", monospace;
     text-transform: lowercase;
 }

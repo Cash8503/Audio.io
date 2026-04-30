@@ -14,6 +14,14 @@ function getSettingValueFromControl(control, setting) {
     return control.value;
 }
 
+function settingsMatchDefault(setting) {
+    if (!setting || !Object.prototype.hasOwnProperty.call(setting, "default_value")) {
+        return true;
+    }
+
+    return JSON.stringify(setting.value) === JSON.stringify(setting.default_value);
+}
+
 async function saveSetting(key, setting, control) {
     const value = getSettingValueFromControl(control, setting);
 
@@ -34,6 +42,8 @@ async function saveSetting(key, setting, control) {
         await saveSettings({ [key]: value });
         applySettingPreview(key, value);
         currentSettings = await fetchSettings();
+        renderSettings(currentSettings);
+        updateFaviconFromCSSVar()
         setStatus(saveResult, "Setting saved.", "success");
     } catch (error) {
         console.error(error);
@@ -60,6 +70,7 @@ async function restoreDefaultSetting(key, control, button) {
     } finally {
         button.disabled = false;
         control.disabled = false;
+        updateFaviconFromCSSVar()
     }
 }
 
@@ -218,14 +229,18 @@ function createSettingRow(key, setting) {
     const controlGroup = document.createElement("div");
     controlGroup.className = "setting-control-group";
 
-    const defaultButton = document.createElement("button");
-    defaultButton.className = "btn setting-default-button";
-    defaultButton.type = "button";
-    defaultButton.textContent = "Default";
-    defaultButton.title = "Return to the value in settings.example.json";
-    defaultButton.addEventListener("click", () => restoreDefaultSetting(key, control, defaultButton));
+    controlGroup.append(wrapper);
 
-    controlGroup.append(wrapper, defaultButton);
+    if (!settingsMatchDefault(setting)) {
+        const defaultButton = document.createElement("button");
+        defaultButton.className = "btn setting-default-button material-symbols-rounded";
+        defaultButton.type = "button";
+        defaultButton.textContent = "replay";
+        defaultButton.title = "Return to the default value.";
+        defaultButton.addEventListener("click", () => restoreDefaultSetting(key, control, defaultButton));
+        controlGroup.appendChild(defaultButton);
+    }
+
     row.append(labelBlock, controlGroup);
     return row;
 }
